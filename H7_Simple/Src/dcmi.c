@@ -22,7 +22,9 @@
 
 /* USER CODE BEGIN 0 */
 #include "stm32h7xx.h"
-#include "stm32h7xx_it.h"
+#include "stdbool.h"
+#include "framebuffer.h"
+volatile bool frame_is_on = true;
 /* USER CODE END 0 */
 
 DCMI_HandleTypeDef hdcmi;
@@ -55,6 +57,7 @@ void HAL_DCMI_MspInit(DCMI_HandleTypeDef* dcmiHandle)
 {
 
   GPIO_InitTypeDef GPIO_InitStruct = {0};
+  HAL_DMA_MuxSyncConfigTypeDef pSyncConfig= {0};
   if(dcmiHandle->Instance==DCMI)
   {
   /* USER CODE BEGIN DCMI_MspInit 0 */
@@ -126,6 +129,16 @@ void HAL_DCMI_MspInit(DCMI_HandleTypeDef* dcmiHandle)
       Error_Handler();
     }
 
+    pSyncConfig.SyncSignalID = HAL_DMAMUX1_SYNC_EXTI0;
+    pSyncConfig.SyncPolarity = HAL_DMAMUX_SYNC_NO_EVENT;
+    pSyncConfig.SyncEnable = DISABLE;
+    pSyncConfig.EventEnable = ENABLE;
+    pSyncConfig.RequestNumber = 1;
+    if (HAL_DMAEx_ConfigMuxSync(&hdma_dcmi, &pSyncConfig) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
     __HAL_LINKDMA(dcmiHandle,DMA_Handle,hdma_dcmi);
 
   /* USER CODE BEGIN DCMI_MspInit 1 */
@@ -180,6 +193,7 @@ void HAL_DCMI_MspDeInit(DCMI_HandleTypeDef* dcmiHandle)
 } 
 
 /* USER CODE BEGIN 1 */
+uint32_t counter = 0;
 void dcmi_msp_init ()
 {
     HAL_DCMI_MspInit (&hdcmi);
@@ -198,22 +212,42 @@ DMA_HandleTypeDef * dcmi_get_dma_handle ()
 void dcmi_enable_irqs ()
 {
     DCMI->IER = ((DCMI_IER_LINE_IE << DCMI_IER_LINE_IE_Pos) & DCMI_IER_LINE_IE_Msk)|
-        ((DCMI_IER_FRAME_IE << DCMI_IER_FRAME_IE_Pos) & DCMI_IER_FRAME_IE_Msk);
+        ((DCMI_IER_OVR_IE << DCMI_IER_OVR_IE_Pos) & DCMI_IER_OVR_IE_Msk)|
+        ((DCMI_IER_VSYNC_IE << DCMI_IER_VSYNC_IE_Pos) & DCMI_IER_VSYNC_IE_Msk);
 }
 
-void DCMI_IRQHandler ()
+void dcmi_handle_dcmi_irq (void)
 {
+    static uint32_t counter;
     if((DCMI->MISR & DCMI_MIS_LINE_MIS_Msk) == DCMI_MIS_LINE_MIS_Msk)
     {
         DCMI->ICR = ((DCMI_ICR_LINE_ISC << DCMI_ICR_LINE_ISC_Pos) & DCMI_ICR_LINE_ISC_Msk);
+        counter++;
+    }
+    if((DCMI->MISR & DCMI_MIS_OVR_MIS_Msk) == DCMI_MIS_OVR_MIS_Msk)
+    {
+        DCMI->ICR = ((DCMI_ICR_OVR_ISC << DCMI_ICR_OVR_ISC_Pos) & DCMI_ICR_OVR_ISC_Msk);
+//        printf("Overrun.!\n");
     }
 
-    if((DCMI->MISR & DCMI_MIS_LINE_MIS_Msk) == DCMI_MIS_LINE_MIS_Msk)
+    if((DCMI->MISR & DCMI_MIS_VSYNC_MIS_Msk) == DCMI_MIS_VSYNC_MIS_Msk)
     {
-        DCMI->ICR = ((DCMI_ICR_LINE_ISC << DCMI_ICR_LINE_ISC_Pos) & DCMI_ICR_LINE_ISC_Msk);
+        DCMI->ICR = ((DCMI_ICR_VSYNC_ISC<< DCMI_ICR_VSYNC_ISC_Pos) & DCMI_ICR_VSYNC_ISC_Msk);
+//        printf("Counter : %d \n", counter);
+//        dcmi_print_buff (MAIN_FB()->pixels, 15);
+        counter = 0;
     }
+
 }
 
+void dcmi_print_buff (uint8_t * p_buff,uint32_t len)
+{
+    for(uint32_t arr_cnt = 0; arr_cnt<len; arr_cnt++)
+    {
+        printf("%d  ", p_buff[arr_cnt]);
+    }
+    printf("\n");    
+}
 /* USER CODE END 1 */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

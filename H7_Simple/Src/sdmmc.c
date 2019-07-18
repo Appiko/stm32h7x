@@ -114,6 +114,14 @@ void HAL_SD_MspDeInit(SD_HandleTypeDef* sdHandle)
 } 
 
 /* USER CODE BEGIN 1 */
+void sdmmc_msp_init ()
+{
+    HAL_SD_MspInit (&hsd1);
+}
+SD_HandleTypeDef * sdmmc_get_sd_handle ()
+{
+    return &hsd1;
+}
 
 /* USER CODE END 1 */
 

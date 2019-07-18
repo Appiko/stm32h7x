@@ -39,6 +39,8 @@ extern SD_HandleTypeDef hsd1;
 void MX_SDMMC1_SD_Init(void);
 
 /* USER CODE BEGIN Prototypes */
+void sdmmc_msp_init ();
+SD_HandleTypeDef * sdmmc_get_sd_handle ();
 
 /* USER CODE END Prototypes */
 

@@ -28,7 +28,8 @@
 #define OMV_XCLK_FREQUENCY      (12000000)
 
 // Sensor PLL register value.
-#define OMV_OV7725_PLL_CONFIG   (0x41)  // x4
+//#define OMV_OV7725_PLL_CONFIG   (0x41)  // x4
+#define OMV_OV7725_PLL_CONFIG   (0x01)  // x4
 
 // Sensor Banding Filter Value
 #define OMV_OV7725_BANDING      (0x7F)

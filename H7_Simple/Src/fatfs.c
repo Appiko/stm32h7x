@@ -24,6 +24,7 @@ FATFS SDFatFS;    /* File system object for SD logical drive */
 FIL SDFile;       /* File object for SD */
 
 /* USER CODE BEGIN Variables */
+uint8_t buff[512];
 
 /* USER CODE END Variables */    
 
@@ -50,7 +51,27 @@ DWORD get_fattime(void)
 }
 
 /* USER CODE BEGIN Application */
-     
+uint8_t fatfs_mkfs ()
+{
+      FRESULT res;
+      res = f_mkfs (SDPath, FM_ANY, 0, buff, sizeof(buff));
+      return res;
+}
+
+uint8_t fatfs_init (void)
+{
+    return FATFS_LinkDriver(&SD_Driver, SDPath);
+}
+
+FATFS * fatfs_get_fs_ptr ()
+{
+    return &SDFatFS;
+}
+
+TCHAR const * fatfs_get_fs_path ()
+{
+    return (TCHAR const *)SDPath;
+}
 /* USER CODE END Application */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

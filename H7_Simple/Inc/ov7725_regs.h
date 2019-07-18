@@ -82,7 +82,7 @@
 #define COM7_RES_QVGA           0x40 /* Resolution QVGA          */
 #define COM7_BT656              0x20 /* BT.656 protocol ON/OFF   */
 #define COM7_SENSOR_RAW         0x10 /* Sensor RAW               */
-#define COM7_FMT_GBR422         0x00 /* RGB output format GBR422 */ // Updated
+#define COM7_FMT_GBR422         0x02 /* RGB output format GBR422 */ // Updated
 #define COM7_FMT_RGB565         0x04 /* RGB output format RGB565 */
 #define COM7_FMT_RGB555         0x08 /* RGB output format RGB555 */
 #define COM7_FMT_RGB444         0x0C /* RGB output format RGB444 */

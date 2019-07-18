@@ -81,8 +81,8 @@ static uint8_t default_regs[][2] = {
 // From App Note.
 
     {COM12,         0x03},
-    {HSTART,        0x22},
-    {HSIZE,         0xa4},
+    {HSTART,        0x23},
+    {HSIZE,         0xa0},
     {VSTART,        0x07},
     {VSIZE,         0xf0},
     {HREF,          0x00},
@@ -159,7 +159,7 @@ static uint8_t default_regs[][2] = {
 
 // OpenMV Custom.
 
-    {COM7,          COM7_FMT_R_BAYER},
+    {COM7,          COM7_FMT_P_BAYER | COM7_SENSOR_RAW | COM7_RES_VGA },
 
 // End.
 
@@ -727,15 +727,23 @@ int snapshot(sensor_t *sensor, image_t *image)
 
     length = (w * h * 1);
     addr = (uint32_t) dest_fb;
-
-
-    status = HAL_DCMI_Start_DMA (dcmi_get_dcmi_handle (),
-            DCMI_MODE_SNAPSHOT, addr, length);
     
+    memset (MAIN_FB()->pixels, 0, length);
+
+    printf("Brfore : ");
+    dcmi_print_buff (MAIN_FB()->pixels, 15);
+
+    do
+    {
+        status = HAL_DCMI_Start_DMA (dcmi_get_dcmi_handle (),
+                DCMI_MODE_SNAPSHOT, addr, length);
+    }while(status != HAL_OK);
+    
+
     printf("length  : %d, Addr : %d, Status : %d\n", length,addr,status);
     MAIN_FB()->w = w;
     MAIN_FB()->h = h;
-    MAIN_FB()->bpp = 2;
+    MAIN_FB()->bpp = 1;
 
     if (image != NULL) {
         image->w = MAIN_FB()->w;

@@ -34,16 +34,18 @@
 #include "stdio.h"
 #include "ov7725.h"
 #include "cambus.h"
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+#define PIX_H 480
+#define PIX_W 640
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-//uint8_t arr_pix[480][640] = {}, arr_data[480][640] = {};
+typedef uint8_t row_t[PIX_H][PIX_W];
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,12 +56,25 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+uint8_t arr_pix_row[(PIX_W * 3)] = {};
+FIL f_img;
+
+const uint8_t ppm_header[] = {'P','6','\n','1','6',' ','0','5','\n','2','5','5','\n'};
+FRESULT res;
+uint32_t byteswritten;
+const TCHAR * filename = "bayer2ppm_01.ppm";
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
+
+uint8_t img_file_init (void);
+
+void img_bayer2rgb_mid (uint32_t index, uint8_t * p_bayer);
+
 
 /* USER CODE END PFP */
 
@@ -114,7 +129,12 @@ int main(void)
   tim_msp_init ();
   tim_pwm1_start ();
   i2c_msp_init ();
+  sdmmc_msp_init ();
   printf("Hello World\n");
+  HAL_GPIO_WritePin (LED_R_GPIO_Port, LED_R_Pin, 0);
+  HAL_Delay (50);
+  HAL_GPIO_WritePin (LED_R_GPIO_Port, LED_R_Pin, 1);
+  HAL_GPIO_WritePin (LED_G_GPIO_Port, LED_G_Pin, 1);
   uint8_t ver_addr = 10;
   uint8_t ver[] = {0, 0} ;
   uint32_t status_tx = 0;
@@ -124,7 +144,10 @@ int main(void)
   printf("Status TX 0x%x, Status RX 0x%x Ver 0x%x ID 0x%x\n", status_tx, status_rx, ver[0], ver[1]);
 //  printf("Err 0x%x, Mode 0x%x, State 0x%x\n", HAL_I2C_GetError (i2c_get_i2c1_handle ()),
 //  HAL_I2C_GetMode (i2c_get_i2c1_handle ()),HAL_I2C_GetState (i2c_get_i2c1_handle () );
-  
+  uint8_t fs_status;
+//  fs_status = fatfs_init ();
+//  printf("FatFs Status : %d\n", fs_status);
+//  img_file_init ();
   printf("I2C device found : %d\n", cambus_scan());
   {
       sensor.framesize = FRAMESIZE_VGA;
@@ -141,31 +164,22 @@ int main(void)
   sensor.snapshot(&sensor, &img);
 
 
-  printf("Image dimensions(h x w) : %d x %d\n", img.h, img.w);
-  printf("Image bpp : %d\n", img.bpp);
-  uint32_t cnt = 0; uint8_t g,b,r;
+//  printf("Image dimensions(h x w) : %d x %d\n", img.h, img.w);
+//  printf("Image bpp : %d\n", img.bpp);
   for(uint32_t i=0; i< img.h; i++)
   {
-    for(uint32_t j = 0; j < img.w; j++)
-    {
-//        g = (img.pixels[i*img.w + j] & 0xF0);
-//        b = (img.pixels[i*img.w + j] & 0x0C) << 4;
-//        r = (img.pixels[i*img.w + j] & 0x03) << 6;
-//        printf("%d %d %d   ",r,g,b);
-        printf("%d  ",img.pixels[i*img.w + j]);
-    }
-    printf("\n");
-    HAL_Delay (10);
+      img_bayer2rgb_mid (i, img.pixels);
   }
   
-  printf("\n\n");
+//  printf("\n\n");
 
 //  for(uint32_t pix = 0; pix < img.h*img.w*2; pix++)
 //  {
 //      printf("%d ", img.pixels[pix]);
 //  }
   
-//    printf("\nImage size %d Array size %d\n", cnt, sizeof(img.pixels));
+    printf("\nEOF \n");
+//  HAL_GPIO_WritePin (LED_G_GPIO_Port, LED_G_Pin, 0);
 
   /* USER CODE END 2 */
 
@@ -204,12 +218,12 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = 1;
-  RCC_OscInitStruct.PLL.PLLN = 20;
+  RCC_OscInitStruct.PLL.PLLM = 3;
+  RCC_OscInitStruct.PLL.PLLN = 200;
   RCC_OscInitStruct.PLL.PLLP = 2;
   RCC_OscInitStruct.PLL.PLLQ = 2;
   RCC_OscInitStruct.PLL.PLLR = 2;
-  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -223,13 +237,13 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_D3PCLK1|RCC_CLOCKTYPE_D1PCLK1;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV1;
-  RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV2;
+  RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -256,6 +270,155 @@ static void MX_NVIC_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t img_file_init (void)
+{
+    res = f_mount (fatfs_get_fs_ptr (), (TCHAR const*)SDPath, 0); 
+    if(res == FR_OK)
+    {
+        if(f_open (&f_img, filename, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK)
+        {
+            res = f_write (&f_img, ppm_header, sizeof(ppm_header), (void *)byteswritten);
+            if((byteswritten > 0) &&(res == FR_OK))
+            {
+                f_close(&f_img);
+            }
+        }
+    }
+    return res;
+}
+
+uint8_t img_file_append (uint8_t * p_data, uint32_t len)
+{
+    res = f_mount (fatfs_get_fs_ptr (), fatfs_get_fs_path (), 0); 
+    if(res == FR_OK)
+    {
+        if(f_open (&f_img, filename, FA_OPEN_APPEND | FA_WRITE) == FR_OK)
+        {
+            res = f_write (&f_img, p_data, len, (void *)byteswritten);
+            if((byteswritten > 0) &&(res == FR_OK))
+            {
+                f_close(&f_img);
+            }
+        }
+    }
+    return res;
+    
+}
+
+void img_bayer2rgb_mid (uint32_t index, uint8_t * p_bayer)
+{
+    //set last byte to '\n'
+    //GBRG bayer format
+    //if index = 0 || 479 (first and last row)
+    if (index == 0 || index == (PIX_H-1))
+    {
+        //whole row zero
+        memset (arr_pix_row, 0, PIX_W*3);
+    }
+    //check if index is odd
+    else if (index % 2 != 0)
+    {
+        //run for start from red
+        for(uint32_t raw_i = 0, img_i = 0; raw_i < PIX_W; raw_i++, img_i += 3)
+        {
+            //0th byte || (PIX_W - 1) byte 
+            if (raw_i == 0 || raw_i == (PIX_W - 1))
+            {
+                //all zero
+                arr_pix_row[img_i] = 0;
+                arr_pix_row[img_i + 1] = 0;
+                arr_pix_row[img_i + 2] = 0;
+            }
+            //check if odd byte
+            else if (raw_i % 2 != 0)
+            {
+                //red = avg of prev and next
+                arr_pix_row[img_i] = (p_bayer[(index * PIX_W) + raw_i - 1] +
+                    p_bayer[(index * PIX_W) + raw_i + 1])/2;
+                //green = reading
+                arr_pix_row[img_i + 1] = p_bayer[(index * PIX_W) + raw_i];
+                //blue = avg of top and bottom
+                arr_pix_row[img_i + 2] = (p_bayer[((index-1) * PIX_W) + raw_i] + 
+                    p_bayer[((index+1) * PIX_W) + raw_i])/2;
+            }
+            //if even 
+            else
+            {
+                //red = reading
+                arr_pix_row[img_i] = p_bayer[(index * PIX_W) + raw_i];
+                //green  = avg of top bottom sideways
+                arr_pix_row[img_i + 1] = (p_bayer[((index-1) * PIX_W) + raw_i] + 
+                    p_bayer[((index+1) * PIX_W) + raw_i] +
+                    p_bayer[(index * PIX_W) + raw_i - 1] +
+                    p_bayer[(index * PIX_W) + raw_i + 1])/4;
+                //blue = avg of corners
+                arr_pix_row[img_i + 2] = (p_bayer[((index-1) * PIX_W) + raw_i - 1] + 
+                    p_bayer[((index-1) * PIX_W) + raw_i + 1] + 
+                    p_bayer[((index+1) * PIX_W) + raw_i - 1] +
+                    p_bayer[((index+1) * PIX_W) + raw_i + 1])/4;
+            }
+        }
+    
+    }
+    //else index is even
+    else
+    {
+        //run for start from blue
+        for(uint32_t raw_i = 0, img_i = 0; raw_i < PIX_W; raw_i++, img_i += 3)
+        {
+            //0th byte || (PIX_W - 1)th byte:
+            if (raw_i == 0 || raw_i == (PIX_W - 1))
+            {
+                //all zeros
+                arr_pix_row[img_i] = 0;
+                arr_pix_row[img_i+1] = 0;
+                arr_pix_row[img_i+2] = 0;
+            }
+            //check if odd byte
+            else if(raw_i%2 != 0)
+            {
+                //red = avg of corners
+                arr_pix_row[img_i] = (p_bayer[((index-1) * PIX_W) + raw_i - 1] + 
+                    p_bayer[((index-1) * PIX_W) + raw_i + 1] + 
+                    p_bayer[((index+1) * PIX_W) + raw_i - 1] +
+                    p_bayer[((index+1) * PIX_W) + raw_i + 1])/4;
+                //green = avg of top bottom sideways
+                arr_pix_row[img_i+1] = (p_bayer[((index-1) * PIX_W) + raw_i] + 
+                    p_bayer[((index+1) * PIX_W) + raw_i] +
+                    p_bayer[(index * PIX_W) + raw_i - 1] +
+                    p_bayer[(index * PIX_W) + raw_i + 1])/4;
+                //blue = reading
+                arr_pix_row[img_i+2] = p_bayer[(index * PIX_W) + raw_i];
+            }
+            //if even
+            else
+            {
+                //red = avg of top and bottom
+                arr_pix_row[img_i] = (p_bayer[((index-1) * PIX_W) + raw_i] + 
+                    p_bayer[((index+1) * PIX_W) + raw_i])/2;
+                //green = reading
+                arr_pix_row[img_i+1] = p_bayer[(index * PIX_W) + raw_i];
+                //blue = avg of prev and next
+                arr_pix_row[img_i+2] = (p_bayer[(index * PIX_W) + raw_i - 1] +
+                    p_bayer[(index * PIX_W) + raw_i + 1])/2;
+            }
+        }
+    }
+    
+    
+    //append file
+//    uint8_t status;
+//     status = img_file_append (arr_pix_row, sizeof(arr_pix_row));
+//     printf("%d : %d\n", index, status);
+    
+    //print row
+    for(uint i = 0; i < PIX_W * 3; i++)
+    {
+        printf("%c", arr_pix_row[i]);
+    }
+            
+}
+
 
 /* USER CODE END 4 */
 

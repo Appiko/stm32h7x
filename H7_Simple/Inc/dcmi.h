@@ -44,6 +44,8 @@ DCMI_HandleTypeDef * dcmi_get_dcmi_handle ();
 DMA_HandleTypeDef * dcmi_get_dma_handle ();
 
 void dcmi_enable_irqs ();
+void dcmi_handle_dcmi_irq (void);
+void dcmi_print_buff_15 (uint8_t * p_buff);
 
 /* USER CODE END Prototypes */
 
