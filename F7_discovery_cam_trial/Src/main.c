@@ -40,8 +40,8 @@
 /* USER CODE BEGIN Includes */
 #include "stm32746g_discovery.h"
 #include "stm32746g_discovery_sdram.h"
-#include "ov9655.h"
-//#include "ar0135.h"
+//#include "ov9655.h"
+#include "ar0135.h"
 #include "rk043fn48h.h"
 #include "fonts.h"
 //#include "font24.c"
@@ -185,25 +185,28 @@ int main(void)
 
   
   //  LTDC_Init((uint32_t)_fb_base_lr, 0, 0, 320, 240);
-  LTDC_Init((uint32_t)_fb_base_lr, 80, 16, 400, 256);
+//  LTDC_Init((uint32_t)_fb_base_lr, 80, 16, 400, 256);
   BSP_SDRAM_Init();
-  Im_size = 0x9600;
+//  HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin);
+  Im_size = 0xffff;
 //  memset (_fb_base_lr, 0xff, Im_size);
   CAMERA_Init(CAMERA_R320x240);
   HAL_Delay(100);
-  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_lr, Im_size);
+  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)&_fb_base_lr[0][0], Im_size);
+//  HAL_Delay(1000);
 //  CAMERA_Init(CAMERA_RAW);
 //  HAL_Delay(100);
 //  Im_size = 1336400;
 //  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_hr, Im_size);
+//  while(hdcmi.DMA_Handle->Instance->NDTR);
+//  while(hdcmi.DMA_Handle->State != HAL_DMA_STATE_READY);
+  while(hdcmi.State != HAL_DCMI_STATE_READY);
 //  printf("DCMI : XCount %d XSize %d\n", hdcmi.XferCount, hdcmi.XferSize);
-//  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d\n", hdcmi.DMA_Handle->Instance->PAR
-//      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
-//      , hdcmi.DMA_Handle->Instance->NDTR);
-//  while(hdcmi.State != HAL_DCMI_STATE_READY);
+  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
+      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
+      , hdcmi.DMA_Handle->Instance->NDTR, Im_size);
 //  printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
 //  printf("DMA : state %d, Error %d\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
-//  while(hdcmi.DMA_Handle->State != HAL_DMA_STATE_READY);
 //  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, (uint32_t)_fb_base_lr, Im_size);
   
   
@@ -507,9 +510,9 @@ uint8_t CAMERA_Init(uint32_t Resolution) /*Camera initialization*/
     uint8_t status = CAMERA_ERROR;
     CameraHwAddress = CAMERA_I2C_ADDRESS;
     /* Read ID of Camera module via I2C */
-    if(ov9655_ReadID(CameraHwAddress) == OV9655_ID)
+    if(ar0135_ReadID(CameraHwAddress) == AR0135_ID)
     {
-        camera_driv = &ov9655_drv;/* Initialize the camera driver structure */
+        camera_driv = &ar0135_drv;/* Initialize the camera driver structure */
         {
             printf("Correct address.!\n");
             

@@ -124,6 +124,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f7xx_hal.h"
+#include "main.h"
 
 /** @addtogroup STM32F7xx_HAL_Driver
   * @{
@@ -419,6 +420,7 @@ HAL_StatusTypeDef HAL_DCMI_Start_DMA(DCMI_HandleTypeDef* hdcmi, uint32_t DCMI_Mo
   
   /* Enable Capture */
   hdcmi->Instance->CR |= DCMI_CR_CAPTURE;
+  HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin);
 
   /* Release Lock */
   __HAL_UNLOCK(hdcmi);
@@ -617,7 +619,8 @@ void HAL_DCMI_IRQHandler(DCMI_HandleTypeDef *hdcmi)
   {
     /* Clear the VSYNC flag */
     __HAL_DCMI_CLEAR_FLAG(hdcmi, DCMI_FLAG_VSYNCRI);
-    
+    HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin);
+
     /* VSYNC Callback */
 #if (USE_HAL_DCMI_REGISTER_CALLBACKS == 1)
     /*Call registered DCMI vsync event callback*/
@@ -1089,6 +1092,7 @@ static void DCMI_DMAXferCplt(DMA_HandleTypeDef *hdma)
     /* When snapshot mode, set dcmi state to ready */
     if((hdcmi->Instance->CR & DCMI_CR_CM) == DCMI_MODE_SNAPSHOT)
     {  
+      HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin);
       hdcmi->State= HAL_DCMI_STATE_READY;
     }
   }  

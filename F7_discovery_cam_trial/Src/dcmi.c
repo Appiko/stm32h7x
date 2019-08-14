@@ -35,7 +35,7 @@ void MX_DCMI_Init(void)
   hdcmi.Init.SynchroMode = DCMI_SYNCHRO_HARDWARE;
   hdcmi.Init.PCKPolarity = DCMI_PCKPOLARITY_RISING;
   hdcmi.Init.VSPolarity = DCMI_VSPOLARITY_HIGH;
-  hdcmi.Init.HSPolarity = DCMI_HSPOLARITY_LOW;
+  hdcmi.Init.HSPolarity = DCMI_HSPOLARITY_HIGH;
   hdcmi.Init.CaptureRate = DCMI_CR_ALL_FRAME;
   hdcmi.Init.ExtendedDataMode = DCMI_EXTEND_DATA_8B;
   hdcmi.Init.JPEGMode = DCMI_JPEG_DISABLE;
@@ -135,6 +135,8 @@ void HAL_DCMI_MspInit(DCMI_HandleTypeDef* dcmiHandle)
     {
       Error_Handler();
     }
+    
+    DCMI->IER |= DCMI_IER_VSYNC_IE; 
 
     __HAL_LINKDMA(dcmiHandle,DMA_Handle,hdma_dcmi);
 
