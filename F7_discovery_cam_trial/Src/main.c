@@ -54,8 +54,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PIX_H 1024
+#define PIX_H 960
 #define PIX_W 1280
+
+typedef struct 
+{
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+}RGB_data_t;
 
 uint8_t ppm_header[] = {'P','5','\n','1','2','8','0',' ','1','0','2','4','\n','2','5','5','\n'};
 
@@ -72,9 +79,9 @@ void LCD_GPIO_Init(LTDC_HandleTypeDef *, void *);
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-extern uint8_t _fb_base_lr[250][330];
-extern uint8_t _fb_base_hr[PIX_W][PIX_H];
-extern uint8_t _fb_base_ppm[PIX_W*3][PIX_H];
+extern uint8_t _fb_base_lr[240][320];
+extern uint8_t _fb_base_hr[PIX_H][PIX_W];
+extern RGB_data_t _fb_base_ppm[PIX_H][PIX_W];
 FIL fp;
 //static uint8_t _fb_base_ppm[PIX_W*3];
 
@@ -114,7 +121,7 @@ void SystemClock_Config(void);
 void MX_USB_HOST_Process(void);
 
 /* USER CODE BEGIN PFP */
-uint8_t img_bayer2rgb (uint8_t index);
+uint8_t img_bayer2rgb (uint32_t index);
 uint8_t img_file_append (uint8_t * p_data, uint32_t len);
 
 /* USER CODE END PFP */
@@ -188,19 +195,22 @@ int main(void)
 //  LTDC_Init((uint32_t)_fb_base_lr, 80, 16, 400, 256);
   BSP_SDRAM_Init();
 //  HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin);
-  Im_size = 0xffff;
-//  memset (_fb_base_lr, 0xff, Im_size);
+  Im_size = (1280*960)/4;
+  memset (_fb_base_hr, 0, Im_size);
   CAMERA_Init(CAMERA_R320x240);
   HAL_Delay(100);
-  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)&_fb_base_lr[0][0], Im_size);
-//  HAL_Delay(1000);
+  HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 1);
+  HAL_Delay (1);
+  HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 0);
+  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, _fb_base_hr, Im_size);
+  HAL_Delay(1000);
 //  CAMERA_Init(CAMERA_RAW);
 //  HAL_Delay(100);
 //  Im_size = 1336400;
 //  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_hr, Im_size);
 //  while(hdcmi.DMA_Handle->Instance->NDTR);
 //  while(hdcmi.DMA_Handle->State != HAL_DMA_STATE_READY);
-  while(hdcmi.State != HAL_DCMI_STATE_READY);
+//  while(hdcmi.State != HAL_DCMI_STATE_READY);
 //  printf("DCMI : XCount %d XSize %d\n", hdcmi.XferCount, hdcmi.XferSize);
   printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
       , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
@@ -208,7 +218,14 @@ int main(void)
 //  printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
 //  printf("DMA : state %d, Error %d\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
 //  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, (uint32_t)_fb_base_lr, Im_size);
-  
+
+  uint32_t i, j;  
+  for(i = 0; i < PIX_H; i++)
+  {
+      img_bayer2rgb (i);
+  }
+  printf("Size : PPM array %d, Bayer Array : %d\n", sizeof(_fb_base_ppm),
+           sizeof(_fb_base_hr));
   
   
   if(BSP_SD_IsDetected ())
@@ -225,19 +242,15 @@ int main(void)
           {
               printf("Mount successful\n");
               printf("SD Type %d Speed %d clk_div %d\n", hsd1.SdCard.CardType, hsd1.SdCard.Class, hsd1.Init.ClockDiv);
-              status = f_open (&fp, "RGB_Array.ppm", FA_CREATE_ALWAYS | FA_WRITE);
+              status = f_open (&fp, "RGB_Array_1.ppm", FA_CREATE_ALWAYS | FA_WRITE);
               if(status == FR_OK)
               {
-                  printf("File open\n");
                   uint8_t byteswritten;
-                  HAL_Delay (10);
+                  printf("File open\n");
+//                  HAL_Delay (10);
 //                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
 //                  status = f_write (&fp,ppm_header, sizeof(ppm_header), &byteswritten);
 //                  HAL_Delay (10);
-                  for(uint32_t i = 0; i < PIX_H; i++)
-                  {
-                      status = img_bayer2rgb (i);
-                  }
                   status = f_write (&fp,(void *)_fb_base_ppm, sizeof(_fb_base_ppm), &byteswritten);
                   if(status == FR_OK)
                   {
@@ -260,10 +273,23 @@ int main(void)
   else{printf("SD Card not present\n");}
   //HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS , (uint32_t)FRAME_BUFFER, Im_size);
 
-  
-  for(uint16_t i = 0; i < 24; i++)
+  printf("\nBayer\n");
+  for(uint16_t i = 950; i < 960; i++)
   {
-      for(uint32_t j=0; j<32;j++) printf("%d ", _fb_base_lr[i][j]);
+      for(uint32_t j=1275; j<1280;j++) printf("%d ", _fb_base_hr[i][j]);
+      printf("\n");
+  }
+
+  printf("\nRGB\n");
+  for(i = 950; i < 960; i++)
+  {
+      for(j=1275; j<1280; j++)
+      {
+        printf("%d ", _fb_base_ppm[i][j].r);
+        printf("%d ", _fb_base_ppm[i][j].g);
+        printf("%d ", _fb_base_ppm[i][j].b);
+        printf("   ");
+      }
       printf("\n");
   }
   printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
@@ -537,102 +563,103 @@ uint8_t img_file_append (uint8_t * p_data, uint32_t len)
     
 }
 
-uint8_t img_bayer2rgb (uint8_t index)
+uint8_t img_bayer2rgb (uint32_t index)
 {
     //set last byte to '\n'
     //GBRG bayer format
     //if index = 0 || 479 (first and last row)
     if (index == 0 || index == (PIX_H-1))
     {
+        printf("Here : %d\n",index);
         //whole row zero
-        memset (&_fb_base_ppm[0][index], 0, PIX_W*3);
+        memset (&_fb_base_ppm[index][0], 0, PIX_W*3);
     }
-    //check if index is odd
+    //check if index is odd : BG
     else if (index % 2 != 0)
     {
-        //run for start from red
-        for(uint32_t raw_i = 0, img_i = 0; raw_i < PIX_W; raw_i++, img_i += 3)
+        //run for start from blue
+        for(uint32_t raw_i = 0; raw_i < PIX_W; raw_i++)
         {
             //0th byte || (PIX_W - 1) byte 
             if (raw_i == 0 || raw_i == (PIX_W - 1))
             {
                 //all zero
-                _fb_base_ppm[img_i][index] = 0;
-                _fb_base_ppm[img_i + 1][index] = 0;
-                _fb_base_ppm[img_i + 2][index] = 0;
+                _fb_base_ppm[index][raw_i].r = 0;
+                _fb_base_ppm[index][raw_i].g = 0;
+                _fb_base_ppm[index][raw_i].b = 0;
             }
             //check if odd byte
             else if (raw_i % 2 != 0)
             {
-                //red = avg of prev and next
-                _fb_base_ppm[img_i][index] = (_fb_base_hr[raw_i - 1][index] +
-                    _fb_base_hr[raw_i + 1][index])/2;
+                //red = vertical avg
+                _fb_base_ppm[index][raw_i].r = (_fb_base_hr[index - 1][raw_i] +
+                    _fb_base_hr[index + 1][raw_i])/2;
                 //green = reading
-                _fb_base_ppm[img_i + 1][index] = _fb_base_hr[raw_i][index];
-                //blue = avg of top and bottom
-                _fb_base_ppm[img_i + 2][index] = (_fb_base_hr[raw_i][index-1] + 
-                    _fb_base_hr[raw_i][index+1])/2;
+                _fb_base_ppm[index][raw_i].g = _fb_base_hr[index][raw_i];
+                //blue = horizontal avg
+                _fb_base_ppm[index][raw_i].b = (_fb_base_hr[index][raw_i - 1] 
+                    + _fb_base_hr[index][raw_i + 1])/2;
             }
             //if even 
             else
             {
-                //red = reading
-                _fb_base_ppm[img_i][index] = _fb_base_hr[raw_i][index];
-                //green  = avg of top bottom sideways
-                _fb_base_ppm[img_i + 1][index] = (_fb_base_hr[raw_i][index-1] + 
-                    _fb_base_hr[raw_i][index+1] +
-                    _fb_base_hr[raw_i - 1][index] +
-                    _fb_base_hr[raw_i + 1][index])/4;
-                //blue = avg of corners
-                _fb_base_ppm[img_i + 2][index] = (_fb_base_hr[raw_i - 1][index-1] + 
-                    _fb_base_hr[raw_i + 1][index-1] + 
-                    _fb_base_hr[raw_i - 1][index+1] +
-                    _fb_base_hr[raw_i + 1][index+1])/4;
+                //red = diagonal avg
+                _fb_base_ppm[index][raw_i].r = (_fb_base_hr[index - 1][raw_i - 1] 
+                    + _fb_base_hr[index - 1][raw_i + 1]
+                    + _fb_base_hr[index + 1][raw_i - 1]
+                    + _fb_base_hr[index + 1][raw_i + 1])/4;
+                //green = vertical and horizontal avg
+                _fb_base_ppm[index][raw_i].g = (_fb_base_hr[index][raw_i - 1]
+                    + _fb_base_hr[index][raw_i + 1]
+                    + _fb_base_hr[index - 1][raw_i]
+                    + _fb_base_hr[index + 1][raw_i])/4;
+                //blue = reading
+                _fb_base_ppm[index][raw_i].b = _fb_base_hr[index][raw_i];
             }
         }
     
     }
-    //else index is even
+    //else index is even : GR
     else
     {
-        //run for start from blue
-        for(uint32_t raw_i = 0, img_i = 0; raw_i < PIX_W; raw_i++, img_i += 3)
+        //run for start from green
+        for(uint32_t raw_i = 0; raw_i < PIX_W; raw_i++)
         {
             //0th byte || (PIX_W - 1)th byte:
             if (raw_i == 0 || raw_i == (PIX_W - 1))
             {
                 //all zeros
-                _fb_base_ppm[img_i][index] = 0;
-                _fb_base_ppm[img_i+1][index] = 0;
-                _fb_base_ppm[img_i+2][index] = 0;
+                _fb_base_ppm[index][raw_i].r = 0;
+                _fb_base_ppm[index][raw_i].g = 0;
+                _fb_base_ppm[index][raw_i].b = 0;
             }
             //check if odd byte
             else if(raw_i%2 != 0)
             {
-                //red = avg of corners
-                _fb_base_ppm[img_i][index] = (_fb_base_hr[raw_i - 1][index-1] + 
-                    _fb_base_hr[raw_i + 1][index-1] + 
-                    _fb_base_hr[raw_i - 1][index+1] +
-                    _fb_base_hr[raw_i + 1][index+1])/4;
-                //green = avg of top bottom sideways
-                _fb_base_ppm[img_i+1][index] = (_fb_base_hr[raw_i][index-1] + 
-                    _fb_base_hr[raw_i][index+1] +
-                    _fb_base_hr[raw_i - 1][index] +
-                    _fb_base_hr[raw_i + 1][index])/4;
-                //blue = reading
-                _fb_base_ppm[img_i+2][index] = _fb_base_hr[raw_i][index];
+                //red = reading
+                _fb_base_ppm[index][raw_i].r = _fb_base_hr[index][raw_i];
+                //green = horizontal and vertical avg
+                _fb_base_ppm[index][raw_i].g = (_fb_base_hr[index][raw_i - 1]
+                    + _fb_base_hr[index][raw_i + 1]
+                    + _fb_base_hr[index - 1][raw_i]
+                    + _fb_base_hr[index + 1][raw_i])/4;
+                //blue = diagonal avg
+                _fb_base_ppm[index][raw_i].b = (_fb_base_hr[index - 1][raw_i - 1] 
+                    + _fb_base_hr[index - 1][raw_i + 1]
+                    + _fb_base_hr[index + 1][raw_i - 1]
+                    + _fb_base_hr[index + 1][raw_i + 1])/4;
             }
             //if even
             else
             {
-                //red = avg of top and bottom
-                _fb_base_ppm[img_i][index] = (_fb_base_hr[ raw_i][index-1] + 
-                    _fb_base_hr[raw_i][index+1])/2;
+                //red = horizontal avg
+                _fb_base_ppm[index][raw_i].r = (_fb_base_hr[index][raw_i - 1] 
+                    + _fb_base_hr[index][raw_i + 1])/2;
                 //green = reading
-                _fb_base_ppm[img_i+1][index] = _fb_base_hr[raw_i][index];
-                //blue = avg of prev and next
-                _fb_base_ppm[img_i+2][index] = (_fb_base_hr[ raw_i - 1][index] +
-                    _fb_base_hr[raw_i + 1][index])/2;
+                _fb_base_ppm[index][raw_i].g = _fb_base_hr[index][raw_i];
+                //blue = vertical avg
+                _fb_base_ppm[index][raw_i].b = (_fb_base_hr[index][raw_i - 1] 
+                    + _fb_base_hr[index][raw_i + 1])/2;
             }
         }
     }

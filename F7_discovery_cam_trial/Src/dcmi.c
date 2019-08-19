@@ -34,8 +34,8 @@ void MX_DCMI_Init(void)
   hdcmi.Instance = DCMI;
   hdcmi.Init.SynchroMode = DCMI_SYNCHRO_HARDWARE;
   hdcmi.Init.PCKPolarity = DCMI_PCKPOLARITY_RISING;
-  hdcmi.Init.VSPolarity = DCMI_VSPOLARITY_HIGH;
-  hdcmi.Init.HSPolarity = DCMI_HSPOLARITY_HIGH;
+  hdcmi.Init.VSPolarity = DCMI_VSPOLARITY_LOW;
+  hdcmi.Init.HSPolarity = DCMI_HSPOLARITY_LOW;
   hdcmi.Init.CaptureRate = DCMI_CR_ALL_FRAME;
   hdcmi.Init.ExtendedDataMode = DCMI_EXTEND_DATA_8B;
   hdcmi.Init.JPEGMode = DCMI_JPEG_DISABLE;
@@ -127,7 +127,7 @@ void HAL_DCMI_MspInit(DCMI_HandleTypeDef* dcmiHandle)
     hdma_dcmi.Init.MemDataAlignment = DMA_MDATAALIGN_WORD;
     hdma_dcmi.Init.Mode = DMA_CIRCULAR;
     hdma_dcmi.Init.Priority = DMA_PRIORITY_HIGH;
-    hdma_dcmi.Init.FIFOMode = DMA_FIFOMODE_ENABLE;
+    hdma_dcmi.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
     hdma_dcmi.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_FULL;
     hdma_dcmi.Init.MemBurst = DMA_MBURST_INC4;
     hdma_dcmi.Init.PeriphBurst = DMA_PBURST_SINGLE;
