@@ -19,6 +19,8 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
+#include <stdbool.h>
+
 #include "main.h"
 #include "adc.h"
 #include "crc.h"
@@ -59,12 +61,12 @@
 
 typedef struct 
 {
-    uint8_t r;
-    uint8_t g;
     uint8_t b;
+    uint8_t g;
+    uint8_t r;
 }RGB_data_t;
 
-uint8_t ppm_header[] = {'P','5','\n','1','2','8','0',' ','1','0','2','4','\n','2','5','5','\n'};
+uint8_t ppm_header[] = {'P','6','\n','1','2','8','0',' ','9','6','0','\n','2','5','5','\n'};
 
 uint8_t CAMERA_Init(uint32_t );
 static void LTDC_Init(uint32_t, uint16_t, uint16_t, uint16_t, uint16_t);
@@ -80,6 +82,8 @@ void LCD_GPIO_Init(LTDC_HandleTypeDef *, void *);
 
 /* USER CODE BEGIN PV */
 extern uint8_t _fb_base_lr[240][320];
+extern RGB_data_t _fb_base_lcd[240][320];
+extern RGB_data_t _fb_base_rgb[240][320];
 extern uint8_t _fb_base_hr[PIX_H][PIX_W];
 extern RGB_data_t _fb_base_ppm[PIX_H][PIX_W];
 FIL fp;
@@ -122,8 +126,34 @@ void MX_USB_HOST_Process(void);
 
 /* USER CODE BEGIN PFP */
 uint8_t img_bayer2rgb (uint32_t index);
+uint8_t img_compress_16 (uint32_t index);
+uint8_t img_compress_rgb (void);
+uint8_t lcd_bayer2rgb (uint32_t index);
 uint8_t img_file_append (uint8_t * p_data, uint32_t len);
 
+
+void cam_init (uint32_t resolution);
+
+void cam_shot (uint32_t not_used);
+
+void cam_flash (uint32_t not_used);
+
+void cam_save (uint32_t file_no);
+
+void ( * cam_func[CAM_INVALID]) (uint32_t) = {cam_init, cam_shot, cam_flash, cam_save};
+
+void sd_init (void);
+
+void trig_init ();
+
+
+volatile cam_state_t cam_state = CAM_INIT;
+
+volatile uint32_t cam_param = 0;
+
+//temp
+
+volatile uint8_t cam_state_change = 0;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -192,88 +222,71 @@ int main(void)
 
   
   //  LTDC_Init((uint32_t)_fb_base_lr, 0, 0, 320, 240);
-//  LTDC_Init((uint32_t)_fb_base_lr, 80, 16, 400, 256);
+  LTDC_Init((uint32_t)_fb_base_rgb, 80, 16, 400, 256);
   BSP_SDRAM_Init();
 //  HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin);
+  sd_init();
+  trig_init ();
+
   Im_size = (1280*960)/4;
-  memset (_fb_base_hr, 0, Im_size);
-  CAMERA_Init(CAMERA_R320x240);
+//  memset (_fb_base_hr, 0, Im_size*4);
+  CAMERA_Init(CAMERA_RAW);
   HAL_Delay(100);
-  HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 1);
-  HAL_Delay (1);
-  HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 0);
-  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, _fb_base_hr, Im_size);
-  HAL_Delay(1000);
-//  CAMERA_Init(CAMERA_RAW);
-//  HAL_Delay(100);
-//  Im_size = 1336400;
-//  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_hr, Im_size);
-//  while(hdcmi.DMA_Handle->Instance->NDTR);
-//  while(hdcmi.DMA_Handle->State != HAL_DMA_STATE_READY);
+//  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
+//      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
+//      , hdcmi.DMA_Handle->Instance->NDTR, Im_size);
 //  while(hdcmi.State != HAL_DCMI_STATE_READY);
+
+
+//  HAL_DCMI_Stop (&hdcmi);
+//  
+//  Im_size = (320*240)/4;
+//  memset (_fb_base_lr, 0, Im_size*4);
+//  CAMERA_Init(CAMERA_R320x240);
+//  HAL_Delay(100);
+//  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_lr, Im_size);
+//  HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 1);
+//  HAL_Delay (1);
+//  HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 0);
+//  HAL_Delay(1500);
+//
+//  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
+//      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
+//      , hdcmi.DMA_Handle->Instance->NDTR, Im_size);
+  
+//  while(hdcmi.DMA_Handle->Instance->NDTR);
 //  printf("DCMI : XCount %d XSize %d\n", hdcmi.XferCount, hdcmi.XferSize);
-  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
-      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
-      , hdcmi.DMA_Handle->Instance->NDTR, Im_size);
 //  printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
 //  printf("DMA : state %d, Error %d\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
 //  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, (uint32_t)_fb_base_lr, Im_size);
 
-  uint32_t i, j;  
-  for(i = 0; i < PIX_H; i++)
-  {
-      img_bayer2rgb (i);
-  }
-  printf("Size : PPM array %d, Bayer Array : %d\n", sizeof(_fb_base_ppm),
-           sizeof(_fb_base_hr));
+    
   
-  
-  if(BSP_SD_IsDetected ())
-  {
-      printf("SD Card detected\n");
-      uint32_t status = 0;
-      status = SD_initialize (0);
-      if(status  == RES_OK)
-      {
-          printf("SD Card ready\n");
-          HAL_Delay (100);
-          status = f_mount (&SDFatFS, (const TCHAR*)SDPath, 1);
-          if(status == FR_OK)
-          {
-              printf("Mount successful\n");
-              printf("SD Type %d Speed %d clk_div %d\n", hsd1.SdCard.CardType, hsd1.SdCard.Class, hsd1.Init.ClockDiv);
-              status = f_open (&fp, "RGB_Array_1.ppm", FA_CREATE_ALWAYS | FA_WRITE);
-              if(status == FR_OK)
-              {
-                  uint8_t byteswritten;
-                  printf("File open\n");
-//                  HAL_Delay (10);
-//                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
-//                  status = f_write (&fp,ppm_header, sizeof(ppm_header), &byteswritten);
-//                  HAL_Delay (10);
-                  status = f_write (&fp,(void *)_fb_base_ppm, sizeof(_fb_base_ppm), &byteswritten);
-                  if(status == FR_OK)
-                  {
-                      printf("File write done\n");
-                      status = f_close (&fp);
-                      if(status == FR_OK)
-                      {
-                          printf("Safe to remove SD Card\n");
-                      }
-                      else{printf("Failed while appending : %d\n", status);}
-                  }
-                  else{printf("File write failed : %d\n", status);}
-              }
-              else {printf("File open failed : %d\n",status);}
-          }
-          else {printf("Mount Failed : %d\n", status);}
-      }
-      else {printf("SD Card not ready : %d\n", hsd1.State);}
-  }
-  else{printf("SD Card not present\n");}
   //HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS , (uint32_t)FRAME_BUFFER, Im_size);
+/*
+  printf("\nLow Res : ");
+  printf("Bayer\n");
+  for(uint16_t i = 0; i < 10; i++)
+  {
+      for(uint32_t j=0; j<15;j++) printf("%d ", _fb_base_hr[i][j]);
+      printf("\n");
+  }
 
-  printf("\nBayer\n");
+  printf("\nRGB\n");
+  for(i = 0; i < 10; i++)
+  {
+      for(j=0; j<5; j++)
+      {
+        printf("%d ", _fb_base_lcd[i][j].r);
+        printf("%d ", _fb_base_lcd[i][j].g);
+        printf("%d ", _fb_base_lcd[i][j].b);
+        printf("   ");
+      }
+      printf("\n");
+  }
+
+  printf("\nHigh Res : ");
+  printf("Bayer\n");
   for(uint16_t i = 950; i < 960; i++)
   {
       for(uint32_t j=1275; j<1280;j++) printf("%d ", _fb_base_hr[i][j]);
@@ -292,9 +305,8 @@ int main(void)
       }
       printf("\n");
   }
-  printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
-  printf("DMA : state %d, Error %d\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
 
+ */
   
   /* USER CODE END 2 */
 
@@ -303,7 +315,15 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-    MX_USB_HOST_Process();
+//    MX_USB_HOST_Process();
+      if(cam_state_change)
+      {
+        cam_state_change = false;
+        cam_func[cam_state] (cam_param);
+//          HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_PortD8_GPIO_Port, ARDUINO_D8_Pin);
+      }
+      __WFI();
+      HAL_GPIO_TogglePin (ARDUINO_D8_GPIO_Port, ARDUINO_D8_Pin);
 
     /* USER CODE BEGIN 3 */
   }
@@ -386,7 +406,346 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/*
+void HAL_Delay (uint32_t Delay)
+{
+    static uint32_t cycle = 0;
+    for(cycle = 0; cycle < Delay; cycle++)
+    {
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+//        __NOP();
+    }
+}
+*/
 
+
+void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin)
+{
+//    printf ("%s : 0x%x\n", __func__, GPIO_Pin);
+    switch(GPIO_Pin)
+    {
+        case USER_BUTTON_Pin : 
+            {
+                cam_state = CAM_SHOT;
+                cam_state_change = true;
+                cam_param = 0;
+//                cam_func[cam_state] (0);
+            }
+            break;
+        case ARDUINO_A1_Pin : 
+            {
+                cam_state = CAM_FLASH;
+                cam_state_change = true;
+                cam_param = 0;
+                printf("Done : %d %d\n", cam_state, cam_state_change);
+//                cam_func[cam_state] (0);
+            }
+            break;
+    }
+}
+
+void trig_init ()
+{
+    static GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    __disable_irq() ;
+    HAL_GPIO_DeInit(USER_BUTTON_GPIO_Port, USER_BUTTON_Pin);
+    HAL_GPIO_DeInit(ARDUINO_A1_GPIO_Port, ARDUINO_A1_Pin);
+    /*Configure GPIO pin : PtPin */
+    GPIO_InitStruct.Pin = USER_BUTTON_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+    HAL_GPIO_Init(USER_BUTTON_GPIO_Port, &GPIO_InitStruct);
+
+
+    GPIO_InitStruct.Pin = ARDUINO_A1_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(ARDUINO_A1_GPIO_Port, &GPIO_InitStruct);
+    __enable_irq() ;
+
+//    CAMERA_Init(CAMERA_RAW);
+
+}
+
+void sd_init (void)
+{
+    uint32_t status;
+  if(BSP_SD_IsDetected ())
+  {
+      printf("SD Card detected\n");
+      status = SD_initialize (0);
+      if(status  == RES_OK)
+      {
+          printf("SD Card ready\n");
+          HAL_Delay (100);
+          status = f_mount (&SDFatFS, (const TCHAR*)SDPath, 1);
+          if(status == FR_OK)
+          {
+              printf("Mount successful\n");
+    
+          }
+          else {printf("Mount Failed : %d\n", status);}
+      }
+      else {printf("SD Card not ready : %d\n", hsd1.State);}
+  }
+  else{printf("SD Card not present\n");}
+}
+
+void write_sd_card (uint32_t file_no)
+{
+  uint32_t status = 0;
+//  if(BSP_SD_IsDetected ())
+//  {
+//      printf("SD Card detected\n");
+//      status = SD_initialize (0);
+//      if(status  == RES_OK)
+//      {
+//          printf("SD Card ready\n");
+//          HAL_Delay (100);
+//          status = f_mount (&SDFatFS, (const TCHAR*)SDPath, 1);
+//          if(status == FR_OK)
+//          {
+//              printf("Mount successful\n");
+//              printf("SD Type %d Speed %d clk_div %d\n", hsd1.SdCard.CardType, hsd1.SdCard.Class, hsd1.Init.ClockDiv);
+//              status = f_open (&fp, "RGB_Array_1.ppm", FA_CREATE_ALWAYS | FA_WRITE);
+//              if(status == FR_OK)
+//              {
+//                  uint32_t byteswritten;
+//                  printf("File open\n");
+////                  HAL_Delay (10);
+////                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
+//                  status = f_write (&fp,(void *)ppm_header, sizeof(ppm_header), &byteswritten);
+//                  HAL_Delay (10);
+//                  status = f_write (&fp,(void *)_fb_base_ppm, sizeof(_fb_base_ppm), &byteswritten);
+//                  if(status == FR_OK)
+//                  {
+//                      printf("File write done\n");
+//                      status = f_close (&fp);
+//                      if(status == FR_OK)
+//                      {
+//                          printf("Safe to remove SD Card\n");
+//                      }
+//                      else{printf("Failed while appending : %d\n", status);}
+//                  }
+//                  else{printf("File write failed : %d\n", status);}
+//              }
+//              else {printf("File open failed : %d\n",status);}
+//              status = f_open (&fp, "Low_Res1.ppm", FA_CREATE_ALWAYS | FA_WRITE);
+//              if(status == FR_OK)
+//              {
+//                  uint8_t byteswritten;
+//                  printf("File open\n");
+////                  HAL_Delay (10);
+////                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
+////                  status = f_write (&fp,(void *)ppm_header, sizeof(ppm_header), &byteswritten);
+////                  HAL_Delay (10);
+//                  status = f_write (&fp,(void *)_fb_base_lcd, sizeof(_fb_base_lcd), &byteswritten);
+//                  if(status == FR_OK)
+//                  {
+//                      printf("File write done\n");
+//                      status = f_close (&fp);
+//                      if(status == FR_OK)
+//                      {
+//                          printf("Safe to remove SD Card\n");
+//                      }
+//                      else{printf("Failed while appending : %d\n", status);}
+//                  }
+//                  else{printf("File write failed : %d\n", status);}
+//              }
+//              else {printf("File open failed : %d\n",status);}
+//              status = f_open (&fp, "Low_Res2.ppm", FA_CREATE_ALWAYS | FA_WRITE);
+//              if(status == FR_OK)
+//              {
+//                  uint8_t byteswritten;
+//                  printf("File open\n");
+////                  HAL_Delay (10);
+////                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
+////                  status = f_write (&fp,(void *)ppm_header, sizeof(ppm_header), &byteswritten);
+////                  HAL_Delay (10);
+//                  status = f_write (&fp,(void *)_fb_base_rgb, sizeof(_fb_base_rgb), &byteswritten);
+//                  if(status == FR_OK)
+//                  {
+//                      printf("File write done\n");
+//                      status = f_close (&fp);
+//                      if(status == FR_OK)
+//                      {
+//                          printf("Safe to remove SD Card\n");
+//                      }
+//                      else{printf("Failed while appending : %d\n", status);}
+//                  }
+//                  else{printf("File write failed : %d\n", status);}
+//              }
+//              else {printf("File open failed : %d\n",status);}
+              status = f_open (&fp, "RGB_Array_1.rgb", FA_CREATE_ALWAYS | FA_WRITE);
+              if(status == FR_OK)
+              {
+                  uint8_t byteswritten;
+                  printf("File open\n");
+//                  HAL_Delay (10);
+//                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
+//                  status = f_write (&fp,ppm_header, sizeof(ppm_header), &byteswritten);
+//                  HAL_Delay (10);
+                  status = f_write (&fp,(void *)_fb_base_hr, sizeof(_fb_base_hr), &byteswritten);
+                  if(status == FR_OK)
+                  {
+//                      printf("File write done\n");
+                      status = f_close (&fp);
+                      if(status == FR_OK)
+                      {
+                          printf("Safe to remove SD Card\n");
+                      }
+                      else{printf("Failed while appending : %d\n", status);}
+                  }
+                  else{printf("File write failed : %d\n", status);}
+              }
+              else {printf("File open failed : %d\n",status);}
+//          }
+//          else {printf("Mount Failed : %d\n", status);}
+//      }
+//      else {printf("SD Card not ready : %d\n", hsd1.State);}
+//  }
+//  else{printf("SD Card not present\n");}
+  printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
+  printf("DMA : state %d, Error %d\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
+
+}
+
+void cam_init (uint32_t resolution)
+{
+    printf("%s\n", __func__);
+//    CAMERA_Init (resolution);
+//    trig_init ();
+}
+
+void cam_shot (uint32_t not_used)
+{
+    printf("%s\n", __func__);
+    static GPIO_InitTypeDef GPIO_InitStruct = {0};
+    /*Configure GPIO pin : PtPin */
+    __disable_irq() ;
+    HAL_GPIO_DeInit(USER_BUTTON_GPIO_Port, USER_BUTTON_Pin);
+    HAL_GPIO_DeInit(ARDUINO_A1_GPIO_Port, ARDUINO_A1_Pin);
+    GPIO_InitStruct.Pin = USER_BUTTON_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+    HAL_GPIO_Init(USER_BUTTON_GPIO_Port, &GPIO_InitStruct);
+
+
+    GPIO_InitStruct.Pin = ARDUINO_A1_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(ARDUINO_A1_GPIO_Port, &GPIO_InitStruct);
+    HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_hr, Im_size);
+    __enable_irq() ;
+    HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 1);
+    for(uint32_t i = 0; i < 10000; i++)
+    {
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+        __NOP();
+    }
+    HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 0);
+//    printf("Flash Reg : 0x%x\n",  CAMERA_IO_Read (CameraHwAddress,AR0135_FLASH));
+    __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_VSYNC);
+
+}
+
+void cam_flash (uint32_t not_used)
+{
+    printf("%s\n", __func__);
+    HAL_GPIO_WritePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin, 1);
+    for(uint32_t i = 0; i < 3*750; i++)
+    {
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+      __NOP();
+    }
+    HAL_GPIO_WritePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin, 0);
+
+}
+
+void cam_save (uint32_t file_no)
+{
+    printf("%s\n", __func__);
+//  uint32_t i, j;  
+//  for(i = 0; i < PIX_H; i++)
+//  {
+//      img_bayer2rgb (i);
+//  }
+
+    static GPIO_InitTypeDef GPIO_InitStruct = {0};
+    img_compress_rgb ();
+//      HAL_DCMI_Stop (&hdcmi);
+    write_sd_card (file_no);
+    trig_init ();
+//    cam_state = CAM_INIT;
+//    cam_state_change = true;
+//    cam_param = CAMERA_RAW;
+//      HAL_DCMI_DeInit (&hdcmi);
+//      HAL_DCMI_Init (&hdcmi);
+}
 
 int cambus_scan()
 {
@@ -513,7 +872,7 @@ uint16_t Width, uint16_t Height)
     layer_cfg.WindowX1 = Width;
     layer_cfg.WindowY0 = Ypos;
     layer_cfg.WindowY1 = Height;
-    layer_cfg.PixelFormat = LTDC_PIXEL_FORMAT_RGB565;
+    layer_cfg.PixelFormat = LTDC_PIXEL_FORMAT_RGB888;
     layer_cfg.FBStartAdress = FB_Address;
     layer_cfg.Alpha = 255;
     layer_cfg.Alpha0 = 0;
@@ -563,6 +922,38 @@ uint8_t img_file_append (uint8_t * p_data, uint32_t len)
     
 }
 
+uint8_t img_compress_rgb (void)
+{
+    static uint32_t cmpr_index;
+    for(uint32_t index = 0; index < PIX_H; index += 4)
+    {
+        cmpr_index = (PIX_H/4) - index/4;
+        for(uint32_t hr_i = 0, lr_i = PIX_W/4; hr_i < PIX_W; hr_i += 4, lr_i --)
+        {
+            _fb_base_rgb[cmpr_index][lr_i].r = _fb_base_hr[index][hr_i + 1];
+            _fb_base_rgb[cmpr_index][lr_i].g = (_fb_base_hr[index][hr_i]
+                + _fb_base_hr[index + 1][hr_i + 1])/2;
+            _fb_base_rgb[cmpr_index][lr_i].b = _fb_base_hr[index+1][hr_i];
+        }
+    }
+    return 0;
+}
+
+uint8_t img_compress_16 (uint32_t index)
+{
+    static uint32_t cmpr_index;
+    cmpr_index = index/4;
+    for(uint32_t hr_i = 0, lr_i = 0; hr_i < PIX_W; hr_i += 8, lr_i += 2)
+    {
+        _fb_base_lr[cmpr_index][lr_i] = _fb_base_hr[index][hr_i];
+        _fb_base_lr[cmpr_index][lr_i+1] = _fb_base_hr[index][hr_i+1];
+        _fb_base_lr[cmpr_index+1][lr_i] = _fb_base_hr[index+1][hr_i];
+        _fb_base_lr[cmpr_index+1][lr_i+1] = _fb_base_hr[index+1][hr_i+1];
+    }
+}
+
+
+
 uint8_t img_bayer2rgb (uint32_t index)
 {
     //set last byte to '\n'
@@ -570,7 +961,6 @@ uint8_t img_bayer2rgb (uint32_t index)
     //if index = 0 || 479 (first and last row)
     if (index == 0 || index == (PIX_H-1))
     {
-        printf("Here : %d\n",index);
         //whole row zero
         memset (&_fb_base_ppm[index][0], 0, PIX_W*3);
     }
@@ -588,19 +978,23 @@ uint8_t img_bayer2rgb (uint32_t index)
                 _fb_base_ppm[index][raw_i].g = 0;
                 _fb_base_ppm[index][raw_i].b = 0;
             }
-            //check if odd byte
+            //check if odd byte : Gb
             else if (raw_i % 2 != 0)
             {
                 //red = vertical avg
                 _fb_base_ppm[index][raw_i].r = (_fb_base_hr[index - 1][raw_i] +
                     _fb_base_hr[index + 1][raw_i])/2;
                 //green = reading
-                _fb_base_ppm[index][raw_i].g = _fb_base_hr[index][raw_i];
+                _fb_base_ppm[index][raw_i].g = (_fb_base_hr[index][raw_i]
+                    + _fb_base_hr[index - 1][raw_i - 1] 
+                    + _fb_base_hr[index - 1][raw_i + 1]
+                    + _fb_base_hr[index + 1][raw_i - 1]
+                    + _fb_base_hr[index + 1][raw_i + 1])/5;
                 //blue = horizontal avg
                 _fb_base_ppm[index][raw_i].b = (_fb_base_hr[index][raw_i - 1] 
                     + _fb_base_hr[index][raw_i + 1])/2;
             }
-            //if even 
+            //if even : B
             else
             {
                 //red = diagonal avg
@@ -633,7 +1027,7 @@ uint8_t img_bayer2rgb (uint32_t index)
                 _fb_base_ppm[index][raw_i].g = 0;
                 _fb_base_ppm[index][raw_i].b = 0;
             }
-            //check if odd byte
+            //check if odd byte : R
             else if(raw_i%2 != 0)
             {
                 //red = reading
@@ -649,17 +1043,145 @@ uint8_t img_bayer2rgb (uint32_t index)
                     + _fb_base_hr[index + 1][raw_i - 1]
                     + _fb_base_hr[index + 1][raw_i + 1])/4;
             }
-            //if even
+            //if even : Gr
             else
             {
                 //red = horizontal avg
                 _fb_base_ppm[index][raw_i].r = (_fb_base_hr[index][raw_i - 1] 
                     + _fb_base_hr[index][raw_i + 1])/2;
-                //green = reading
-                _fb_base_ppm[index][raw_i].g = _fb_base_hr[index][raw_i];
+                //green = reading + diagonal corner
+                _fb_base_ppm[index][raw_i].g = (_fb_base_hr[index][raw_i] 
+                    + _fb_base_hr[index - 1][raw_i - 1] 
+                    + _fb_base_hr[index - 1][raw_i + 1]
+                    + _fb_base_hr[index + 1][raw_i - 1]
+                    + _fb_base_hr[index + 1][raw_i + 1])/5;
                 //blue = vertical avg
-                _fb_base_ppm[index][raw_i].b = (_fb_base_hr[index][raw_i - 1] 
-                    + _fb_base_hr[index][raw_i + 1])/2;
+                _fb_base_ppm[index][raw_i].b = (_fb_base_hr[index - 1][raw_i] 
+                    + _fb_base_hr[index + 1][raw_i])/2;
+            }
+        }
+    }
+    
+    
+    //append file
+//    uint8_t status;
+//     status = img_file_append (_fb_base_ppm, sizeof(_fb_base_ppm));
+//     printf("%d : %d\n", index, status);
+//     return status;
+    return 0;
+            
+}
+
+//Split function into 4 functions
+//0. Zeros
+//1. Odd rows odd columns
+//2. Even rows odd columns
+//3. Odd rows even columns
+//4. Even rows even columns
+uint8_t lcd_bayer2rgb (uint32_t index)
+{
+    //set last byte to '\n'
+    //GBRG bayer format
+    //if index = 0 || 479 (first and last row)
+    if (index == 0 || index == (239))
+    {
+        //whole row zero
+        memset (&_fb_base_lcd[index][0], 0, 320*3);
+    }
+    //check if index is odd : BG
+    else if (index % 2 != 0)
+    {
+        //run for start from blue
+        for(uint32_t raw_i = 0; raw_i < 320; raw_i++)
+        {
+            //0th byte || (PIX_W - 1) byte 
+            if (raw_i == 0 || raw_i == (320 - 1))
+            {
+                //all zero
+                _fb_base_lcd[index][raw_i].r = 0;
+                _fb_base_lcd[index][raw_i].g = 0;
+                _fb_base_lcd[index][raw_i].b = 0;
+            }
+            //check if odd byte : Gb
+            else if (raw_i % 2 != 0)
+            {
+                //red = vertical avg
+                _fb_base_lcd[index][raw_i].r = (_fb_base_lr[index - 1][raw_i] +
+                    _fb_base_lr[index + 1][raw_i])/2;
+                //green = reading
+                _fb_base_lcd[index][raw_i].g = (_fb_base_lr[index][raw_i]
+                    + _fb_base_lr[index - 1][raw_i - 1] 
+                    + _fb_base_lr[index - 1][raw_i + 1]
+                    + _fb_base_lr[index + 1][raw_i - 1]
+                    + _fb_base_lr[index + 1][raw_i + 1])/5;
+                //blue = horizontal avg
+                _fb_base_lcd[index][raw_i].b = (_fb_base_lr[index][raw_i - 1] 
+                    + _fb_base_lr[index][raw_i + 1])/2;
+            }
+            //if even : B
+            else
+            {
+                //red = diagonal avg
+                _fb_base_lcd[index][raw_i].r = (_fb_base_lr[index - 1][raw_i - 1] 
+                    + _fb_base_lr[index - 1][raw_i + 1]
+                    + _fb_base_lr[index + 1][raw_i - 1]
+                    + _fb_base_lr[index + 1][raw_i + 1])/4;
+                //green = vertical and horizontal avg
+                _fb_base_lcd[index][raw_i].g = (_fb_base_lr[index][raw_i - 1]
+                    + _fb_base_lr[index][raw_i + 1]
+                    + _fb_base_lr[index - 1][raw_i]
+                    + _fb_base_lr[index + 1][raw_i])/4;
+                //blue = reading
+                _fb_base_lcd[index][raw_i].b = _fb_base_lr[index][raw_i];
+            }
+        }
+    
+    }
+    //else index is even : GR
+    else
+    {
+        //run for start from green
+        for(uint32_t raw_i = 0; raw_i < 320; raw_i++)
+        {
+            //0th byte || (PIX_W - 1)th byte:
+            if (raw_i == 0 || raw_i == (320 - 1))
+            {
+                //all zeros
+                _fb_base_lcd[index][raw_i].r = 0;
+                _fb_base_lcd[index][raw_i].g = 0;
+                _fb_base_lcd[index][raw_i].b = 0;
+            }
+            //check if odd byte : R
+            else if(raw_i%2 != 0)
+            {
+                //red = reading
+                _fb_base_lcd[index][raw_i].r = _fb_base_lr[index][raw_i];
+                //green = horizontal and vertical avg
+                _fb_base_lcd[index][raw_i].g = (_fb_base_lr[index][raw_i - 1]
+                    + _fb_base_lr[index][raw_i + 1]
+                    + _fb_base_lr[index - 1][raw_i]
+                    + _fb_base_lr[index + 1][raw_i])/4;
+                //blue = diagonal avg
+                _fb_base_lcd[index][raw_i].b = (_fb_base_lr[index - 1][raw_i - 1] 
+                    + _fb_base_lr[index - 1][raw_i + 1]
+                    + _fb_base_lr[index + 1][raw_i - 1]
+                    + _fb_base_lr[index + 1][raw_i + 1])/4;
+            }
+            //if even : Gr
+            else
+            {
+                //red = horizontal avg
+                _fb_base_lcd[index][raw_i].r = (_fb_base_lr[index][raw_i - 1] 
+                    + _fb_base_lr[index][raw_i + 1])/2;
+                //green = reading + diagonal corner
+                _fb_base_lcd[index][raw_i].g = (_fb_base_lr[index][raw_i] 
+                    + _fb_base_lr[index - 1][raw_i - 1] 
+                    + _fb_base_lr[index - 1][raw_i + 1]
+                    + _fb_base_lr[index + 1][raw_i - 1]
+                    + _fb_base_lr[index + 1][raw_i + 1])/5;
+                //blue = vertical avg
+                _fb_base_lcd[index][raw_i].b = (_fb_base_lr[index - 1][raw_i] 
+                    + _fb_base_lr[index + 1][raw_i])/2;
             }
         }
     }

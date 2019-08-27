@@ -18,10 +18,14 @@
   */
 
 /* Includes ------------------------------------------------------------------*/
+#include <stdbool.h>
+
 #include "dcmi.h"
 
 /* USER CODE BEGIN 0 */
-
+extern cam_state_t cam_state;
+extern uint8_t cam_state_change;
+extern uint32_t cam_param;
 /* USER CODE END 0 */
 
 DCMI_HandleTypeDef hdcmi;
@@ -128,15 +132,11 @@ void HAL_DCMI_MspInit(DCMI_HandleTypeDef* dcmiHandle)
     hdma_dcmi.Init.Mode = DMA_CIRCULAR;
     hdma_dcmi.Init.Priority = DMA_PRIORITY_HIGH;
     hdma_dcmi.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
-    hdma_dcmi.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_FULL;
-    hdma_dcmi.Init.MemBurst = DMA_MBURST_INC4;
-    hdma_dcmi.Init.PeriphBurst = DMA_PBURST_SINGLE;
+    
     if (HAL_DMA_Init(&hdma_dcmi) != HAL_OK)
     {
       Error_Handler();
     }
-    
-    DCMI->IER |= DCMI_IER_VSYNC_IE; 
 
     __HAL_LINKDMA(dcmiHandle,DMA_Handle,hdma_dcmi);
 
@@ -196,6 +196,15 @@ void HAL_DCMI_MspDeInit(DCMI_HandleTypeDef* dcmiHandle)
 } 
 
 /* USER CODE BEGIN 1 */
+void HAL_DCMI_VsyncEventCallback (DCMI_HandleTypeDef* dcmiHandle)
+{
+    cam_state = CAM_SAVE;
+    cam_state_change = true;
+    cam_param = 0;
+//    dcmi_done ();
+    printf("%s\n", __func__);
+}
+
 
 /* USER CODE END 1 */
 

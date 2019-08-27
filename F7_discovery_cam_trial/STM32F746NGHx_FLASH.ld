@@ -179,15 +179,23 @@ SECTIONS
   {
     . = ALIGN(4);
     _fb_base_lr = .;
-    . = . + 154K + 96K;
+    . = . + 90K + 15K;
 
     . = ALIGN(4);
     _fb_base_hr = .;
-    . = . + 1500K + 96K;
+    . = . + 1500K + 15K;
 
     . = ALIGN(4);
     _fb_base_ppm = .;
-    . = . + 5200K + 96K;
+    . = . + 4M + 15K;
+
+    . = ALIGN(4);
+    _fb_base_lcd = .;
+    . = . + 250K + 15K;
+
+    . = ALIGN(4);
+    _fb_base_rgb = .;
+    . = . + 250K + 15K;
   
 
   } >SDRAM

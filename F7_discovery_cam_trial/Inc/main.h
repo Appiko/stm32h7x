@@ -195,6 +195,9 @@ void Error_Handler(void);
 #define VCP_TX_GPIO_Port GPIOA
 #define RCC_OSC32_OUT_Pin GPIO_PIN_15
 #define RCC_OSC32_OUT_GPIO_Port GPIOC
+#define USER_BUTTON_Pin GPIO_PIN_11
+#define USER_BUTTON_GPIO_Port GPIOI
+#define USER_BUTTON_EXTI_IRQn EXTI15_10_IRQn
 #define LCD_G6_Pin GPIO_PIN_1
 #define LCD_G6_GPIO_Port GPIOK
 #define LCD_G7_Pin GPIO_PIN_2
@@ -207,6 +210,7 @@ void Error_Handler(void);
 #define FMC_A2_GPIO_Port GPIOF
 #define LCD_INT_Pin GPIO_PIN_13
 #define LCD_INT_GPIO_Port GPIOI
+#define LCD_INT_EXTI_IRQn EXTI15_10_IRQn
 #define LCD_R0_Pin GPIO_PIN_15
 #define LCD_R0_GPIO_Port GPIOI
 #define LCD_G4_Pin GPIO_PIN_11
@@ -263,6 +267,7 @@ void Error_Handler(void);
 #define FMC_D15_GPIO_Port GPIOD
 #define ARDUINO_A1_Pin GPIO_PIN_10
 #define ARDUINO_A1_GPIO_Port GPIOF
+#define ARDUINO_A1_EXTI_IRQn EXTI15_10_IRQn
 #define ARDUINO_A2_Pin GPIO_PIN_9
 #define ARDUINO_A2_GPIO_Port GPIOF
 #define ARDUINO_A3_Pin GPIO_PIN_8
@@ -389,6 +394,21 @@ void Error_Handler(void);
 #define ARDUINO_MOSI_PWM_D11_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 #define FRAME_BUFFER 0xC0000000
+
+
+//void cam_shot (void);
+
+void shot_taken (void);
+
+typedef enum
+{
+    CAM_INIT,
+    CAM_SHOT,
+    CAM_FLASH,
+    CAM_SAVE,
+    CAM_INVALID,
+}cam_state_t;
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
