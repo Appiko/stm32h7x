@@ -111,6 +111,7 @@ void Error_Handler(void);
 #define OTG_FS_VBUS_GPIO_Port GPIOJ
 #define Audio_INT_Pin GPIO_PIN_6
 #define Audio_INT_GPIO_Port GPIOD
+#define Audio_INT_EXTI_IRQn EXTI9_5_IRQn
 #define FMC_D2_Pin GPIO_PIN_0
 #define FMC_D2_GPIO_Port GPIOD
 #define SDMMC_D3_Pin GPIO_PIN_11
@@ -249,10 +250,11 @@ void Error_Handler(void);
 #define ARDUINO_D4_GPIO_Port GPIOG
 #define ARDUINO_D2_Pin GPIO_PIN_6
 #define ARDUINO_D2_GPIO_Port GPIOG
-#define ARDUINO_A4_Pin GPIO_PIN_7
-#define ARDUINO_A4_GPIO_Port GPIOF
-#define ARDUINO_A5_Pin GPIO_PIN_6
+#define ARDUINO_A5_Pin GPIO_PIN_7
 #define ARDUINO_A5_GPIO_Port GPIOF
+#define ARDUINO_A5_EXTI_IRQn EXTI9_5_IRQn
+#define ARDUINO_A5F6_Pin GPIO_PIN_6
+#define ARDUINO_A5F6_GPIO_Port GPIOF
 #define FMC_A5_Pin GPIO_PIN_5
 #define FMC_A5_GPIO_Port GPIOF
 #define NC2_Pin GPIO_PIN_2
@@ -272,6 +274,7 @@ void Error_Handler(void);
 #define ARDUINO_A2_GPIO_Port GPIOF
 #define ARDUINO_A3_Pin GPIO_PIN_8
 #define ARDUINO_A3_GPIO_Port GPIOF
+#define ARDUINO_A3_EXTI_IRQn EXTI9_5_IRQn
 #define FMC_SDCKE0_Pin GPIO_PIN_3
 #define FMC_SDCKE0_GPIO_Port GPIOC
 #define FMC_D0_Pin GPIO_PIN_14
@@ -403,8 +406,10 @@ void shot_taken (void);
 typedef enum
 {
     CAM_INIT,
-    CAM_SHOT,
-    CAM_FLASH,
+    CAM_SHOT_START,
+    CAM_SHOT_END,
+    CAM_FLASH_START,
+    CAM_FLASH_END,
     CAM_SAVE,
     CAM_INVALID,
 }cam_state_t;

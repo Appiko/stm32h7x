@@ -177,14 +177,14 @@ SECTIONS
   /* Main framebuffer memory */
   .fb_memory_lr (NOLOAD) :
   {
-    . = ALIGN(4);
+/*    . = ALIGN(4);
     _fb_base_lr = .;
     . = . + 90K + 15K;
-
+*/
     . = ALIGN(4);
     _fb_base_hr = .;
-    . = . + 1500K + 15K;
-
+    . = . + 1500K + 96K;
+/*
     . = ALIGN(4);
     _fb_base_ppm = .;
     . = . + 4M + 15K;
@@ -192,10 +192,10 @@ SECTIONS
     . = ALIGN(4);
     _fb_base_lcd = .;
     . = . + 250K + 15K;
-
+*/
     . = ALIGN(4);
     _fb_base_rgb = .;
-    . = . + 250K + 15K;
+    . = . + 250K + 96K;
   
 
   } >SDRAM

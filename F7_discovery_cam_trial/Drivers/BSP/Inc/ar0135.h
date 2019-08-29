@@ -108,6 +108,18 @@
 
 #define AR0135_I2C_ADDR 0x20
 
+/// 1 <= N <= 63
+#define AR0135_PLL_N    2
+
+/// 32 <= M <= 255 
+#define AR0135_PLL_M    40
+
+/// 1 <= P1 <= 16 
+#define AR0135_PLL_P1   10
+
+/// 4 <= P2 <= 16 
+#define AR0135_PLL_P2   5
+
 /** @defgroup OV9655_Exported_Functions
   * @{
   */ 

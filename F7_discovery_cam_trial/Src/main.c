@@ -19,7 +19,7 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-#include <stdbool.h>
+#include <stdio.h>
 
 #include "main.h"
 #include "adc.h"
@@ -40,6 +40,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stdbool.h"
 #include "stm32746g_discovery.h"
 #include "stm32746g_discovery_sdram.h"
 //#include "ov9655.h"
@@ -59,6 +60,9 @@
 #define PIX_H 960
 #define PIX_W 1280
 
+#define FLASH_TICKS 600
+
+#define SHOT_TICKS 350
 typedef struct 
 {
     uint8_t b;
@@ -81,11 +85,11 @@ void LCD_GPIO_Init(LTDC_HandleTypeDef *, void *);
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-extern uint8_t _fb_base_lr[240][320];
-extern RGB_data_t _fb_base_lcd[240][320];
+//extern uint8_t _fb_base_lr[240][320];
+//extern RGB_data_t _fb_base_lcd[240][320];
 extern RGB_data_t _fb_base_rgb[240][320];
 extern uint8_t _fb_base_hr[PIX_H][PIX_W];
-extern RGB_data_t _fb_base_ppm[PIX_H][PIX_W];
+//extern RGB_data_t _fb_base_ppm[PIX_H][PIX_W];
 FIL fp;
 //static uint8_t _fb_base_ppm[PIX_W*3];
 
@@ -118,6 +122,11 @@ CAMERA_DrvTypeDef *camera_driv;
 static uint32_t CameraHwAddress;
 /* Image size */
 uint32_t Im_size = 0;
+
+/* Expo us */
+static uint32_t g_expo_us;
+
+static uint32_t g_file_no;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -134,20 +143,27 @@ uint8_t img_file_append (uint8_t * p_data, uint32_t len);
 
 void cam_init (uint32_t resolution);
 
-void cam_shot (uint32_t not_used);
+void cam_shot_start (uint32_t not_used);
 
-void cam_flash (uint32_t not_used);
+void cam_shot_stop (uint32_t not_used);
+
+void cam_flash_start (uint32_t not_used);
+
+void cam_flash_stop (uint32_t not_used);
 
 void cam_save (uint32_t file_no);
 
-void ( * cam_func[CAM_INVALID]) (uint32_t) = {cam_init, cam_shot, cam_flash, cam_save};
+void get_file_no ();
+
+void ( * cam_func[CAM_INVALID]) (uint32_t) = {cam_init, cam_shot_start, cam_shot_stop, 
+cam_flash_start, cam_flash_stop, cam_save};
 
 void sd_init (void);
 
 void trig_init ();
 
 
-volatile cam_state_t cam_state = CAM_INIT;
+volatile cam_state_t cam_state = CAM_INVALID;
 
 volatile uint32_t cam_param = 0;
 
@@ -201,7 +217,6 @@ int main(void)
   MX_RTC_Init();
   MX_SDMMC1_SD_Init();
   MX_SPI2_Init();
-  MX_TIM2_Init();
   MX_TIM3_Init();
   MX_TIM5_Init();
   MX_TIM8_Init();
@@ -210,12 +225,13 @@ int main(void)
   MX_USART6_UART_Init();
   MX_USB_HOST_Init();
   MX_FATFS_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_UART_MspInit (&huart1);
 //  HAL_DCMI_MspInit (&hdcmi);
 //  HAL_I2C_MspInit (&hi2c1);
   printf("Hello world\n");
-  printf("Macro : 0x%x, LR : 0x%x, HR : 0x%x\n",FRAME_BUFFER, _fb_base_lr, _fb_base_hr);
+  printf("Macro : 0x%x, LCD : 0x%x, HR : 0x%x\n",FRAME_BUFFER, _fb_base_rgb, _fb_base_hr);
 //  uint8_t i2c_addr = 00;
 //  i2c_addr = cambus_scan ();  
 //  printf("First I2C device found : 0x%x\n",i2c_addr);
@@ -224,14 +240,18 @@ int main(void)
   //  LTDC_Init((uint32_t)_fb_base_lr, 0, 0, 320, 240);
   LTDC_Init((uint32_t)_fb_base_rgb, 80, 16, 400, 256);
   BSP_SDRAM_Init();
-//  HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin);
+//  HAL_GPIO_TogglePin (ARDUINO_A0_GPIO_Port, ARDUINO_A0_Pin);
   sd_init();
+  get_file_no ();
   trig_init ();
 
   Im_size = (1280*960)/4;
-//  memset (_fb_base_hr, 0, Im_size*4);
+  memset (_fb_base_hr, 0, Im_size*4);
   CAMERA_Init(CAMERA_RAW);
   HAL_Delay(100);
+  cam_state = CAM_INIT;
+  cam_param = 27;
+  cam_state_change = true;
 //  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
 //      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
 //      , hdcmi.DMA_Handle->Instance->NDTR, Im_size);
@@ -245,9 +265,9 @@ int main(void)
 //  CAMERA_Init(CAMERA_R320x240);
 //  HAL_Delay(100);
 //  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_lr, Im_size);
-//  HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 1);
+//  HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 1);
 //  HAL_Delay (1);
-//  HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 0);
+//  HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 0);
 //  HAL_Delay(1500);
 //
 //  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
@@ -316,16 +336,15 @@ int main(void)
   {
     /* USER CODE END WHILE */
 //    MX_USB_HOST_Process();
+
+    /* USER CODE BEGIN 3 */
+      
       if(cam_state_change)
       {
         cam_state_change = false;
         cam_func[cam_state] (cam_param);
-//          HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_PortD8_GPIO_Port, ARDUINO_D8_Pin);
       }
       __WFI();
-      HAL_GPIO_TogglePin (ARDUINO_D8_GPIO_Port, ARDUINO_D8_Pin);
-
-    /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
@@ -355,7 +374,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 25;
-  RCC_OscInitStruct.PLL.PLLN = 400;
+  RCC_OscInitStruct.PLL.PLLN = 432;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -377,7 +396,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_6) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_7) != HAL_OK)
   {
     Error_Handler();
   }
@@ -396,7 +415,7 @@ void SystemClock_Config(void)
   PeriphClkInitStruct.Usart6ClockSelection = RCC_USART6CLKSOURCE_PCLK2;
   PeriphClkInitStruct.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
   PeriphClkInitStruct.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
-  PeriphClkInitStruct.Clk48ClockSelection = RCC_CLK48SOURCE_PLLSAIP;
+  PeriphClkInitStruct.Clk48ClockSelection = RCC_CLK48SOURCE_PLL;
   PeriphClkInitStruct.Sdmmc1ClockSelection = RCC_SDMMC1CLKSOURCE_CLK48;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
@@ -406,81 +425,50 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-/*
-void HAL_Delay (uint32_t Delay)
+void HAL_DCMI_VsyncEventCallback (DCMI_HandleTypeDef* dcmiHandle)
 {
-    static uint32_t cycle = 0;
-    for(cycle = 0; cycle < Delay; cycle++)
+    cam_state = CAM_SAVE;
+    cam_state_change = 1;
+    cam_param = ++g_file_no;
+//    dcmi_done ();
+    printf("%s\n", __func__);
+}
+
+void HAL_TIM_PWM_PulseFinishedCallback (TIM_HandleTypeDef* htim)
+{
+    if(htim->Instance == TIM1)
     {
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
-//        __NOP();
+        switch(htim->Channel)
+        {
+            case HAL_TIM_ACTIVE_CHANNEL_1 :
+                cam_state = CAM_SHOT_END;
+                cam_state_change = true;
+                break;
+            case HAL_TIM_ACTIVE_CHANNEL_2 :
+                cam_state = CAM_FLASH_END;
+                cam_state_change = true;
+                break;
+                
+        }
     }
 }
-*/
-
 
 void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin)
 {
-//    printf ("%s : 0x%x\n", __func__, GPIO_Pin);
     switch(GPIO_Pin)
     {
         case USER_BUTTON_Pin : 
             {
-                cam_state = CAM_SHOT;
+                cam_state = CAM_SHOT_START;
                 cam_state_change = true;
                 cam_param = 0;
-//                cam_func[cam_state] (0);
             }
             break;
         case ARDUINO_A1_Pin : 
             {
-                cam_state = CAM_FLASH;
+                cam_state = CAM_FLASH_START;
                 cam_state_change = true;
-                cam_param = 0;
-                printf("Done : %d %d\n", cam_state, cam_state_change);
-//                cam_func[cam_state] (0);
+                cam_param = 50;
             }
             break;
     }
@@ -495,14 +483,14 @@ void trig_init ()
     HAL_GPIO_DeInit(ARDUINO_A1_GPIO_Port, ARDUINO_A1_Pin);
     /*Configure GPIO pin : PtPin */
     GPIO_InitStruct.Pin = USER_BUTTON_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+    GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(USER_BUTTON_GPIO_Port, &GPIO_InitStruct);
 
 
     GPIO_InitStruct.Pin = ARDUINO_A1_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
     HAL_GPIO_Init(ARDUINO_A1_GPIO_Port, &GPIO_InitStruct);
     __enable_irq() ;
 
@@ -536,131 +524,96 @@ void sd_init (void)
 
 void write_sd_card (uint32_t file_no)
 {
-  uint32_t status = 0;
-//  if(BSP_SD_IsDetected ())
-//  {
-//      printf("SD Card detected\n");
-//      status = SD_initialize (0);
-//      if(status  == RES_OK)
-//      {
-//          printf("SD Card ready\n");
-//          HAL_Delay (100);
-//          status = f_mount (&SDFatFS, (const TCHAR*)SDPath, 1);
-//          if(status == FR_OK)
-//          {
-//              printf("Mount successful\n");
-//              printf("SD Type %d Speed %d clk_div %d\n", hsd1.SdCard.CardType, hsd1.SdCard.Class, hsd1.Init.ClockDiv);
-//              status = f_open (&fp, "RGB_Array_1.ppm", FA_CREATE_ALWAYS | FA_WRITE);
-//              if(status == FR_OK)
-//              {
-//                  uint32_t byteswritten;
-//                  printf("File open\n");
-////                  HAL_Delay (10);
-////                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
-//                  status = f_write (&fp,(void *)ppm_header, sizeof(ppm_header), &byteswritten);
-//                  HAL_Delay (10);
-//                  status = f_write (&fp,(void *)_fb_base_ppm, sizeof(_fb_base_ppm), &byteswritten);
-//                  if(status == FR_OK)
-//                  {
-//                      printf("File write done\n");
-//                      status = f_close (&fp);
-//                      if(status == FR_OK)
-//                      {
-//                          printf("Safe to remove SD Card\n");
-//                      }
-//                      else{printf("Failed while appending : %d\n", status);}
-//                  }
-//                  else{printf("File write failed : %d\n", status);}
-//              }
-//              else {printf("File open failed : %d\n",status);}
-//              status = f_open (&fp, "Low_Res1.ppm", FA_CREATE_ALWAYS | FA_WRITE);
-//              if(status == FR_OK)
-//              {
-//                  uint8_t byteswritten;
-//                  printf("File open\n");
-////                  HAL_Delay (10);
-////                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
-////                  status = f_write (&fp,(void *)ppm_header, sizeof(ppm_header), &byteswritten);
-////                  HAL_Delay (10);
-//                  status = f_write (&fp,(void *)_fb_base_lcd, sizeof(_fb_base_lcd), &byteswritten);
-//                  if(status == FR_OK)
-//                  {
-//                      printf("File write done\n");
-//                      status = f_close (&fp);
-//                      if(status == FR_OK)
-//                      {
-//                          printf("Safe to remove SD Card\n");
-//                      }
-//                      else{printf("Failed while appending : %d\n", status);}
-//                  }
-//                  else{printf("File write failed : %d\n", status);}
-//              }
-//              else {printf("File open failed : %d\n",status);}
-//              status = f_open (&fp, "Low_Res2.ppm", FA_CREATE_ALWAYS | FA_WRITE);
-//              if(status == FR_OK)
-//              {
-//                  uint8_t byteswritten;
-//                  printf("File open\n");
-////                  HAL_Delay (10);
-////                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
-////                  status = f_write (&fp,(void *)ppm_header, sizeof(ppm_header), &byteswritten);
-////                  HAL_Delay (10);
-//                  status = f_write (&fp,(void *)_fb_base_rgb, sizeof(_fb_base_rgb), &byteswritten);
-//                  if(status == FR_OK)
-//                  {
-//                      printf("File write done\n");
-//                      status = f_close (&fp);
-//                      if(status == FR_OK)
-//                      {
-//                          printf("Safe to remove SD Card\n");
-//                      }
-//                      else{printf("Failed while appending : %d\n", status);}
-//                  }
-//                  else{printf("File write failed : %d\n", status);}
-//              }
-//              else {printf("File open failed : %d\n",status);}
-              status = f_open (&fp, "RGB_Array_1.rgb", FA_CREATE_ALWAYS | FA_WRITE);
-              if(status == FR_OK)
-              {
-                  uint8_t byteswritten;
-                  printf("File open\n");
-//                  HAL_Delay (10);
-//                  printf("Frame buff pointer : 0x%x\n", _fb_base_hr);
-//                  status = f_write (&fp,ppm_header, sizeof(ppm_header), &byteswritten);
-//                  HAL_Delay (10);
-                  status = f_write (&fp,(void *)_fb_base_hr, sizeof(_fb_base_hr), &byteswritten);
-                  if(status == FR_OK)
-                  {
-//                      printf("File write done\n");
-                      status = f_close (&fp);
-                      if(status == FR_OK)
-                      {
-                          printf("Safe to remove SD Card\n");
-                      }
-                      else{printf("Failed while appending : %d\n", status);}
-                  }
-                  else{printf("File write failed : %d\n", status);}
-              }
-              else {printf("File open failed : %d\n",status);}
-//          }
-//          else {printf("Mount Failed : %d\n", status);}
-//      }
-//      else {printf("SD Card not ready : %d\n", hsd1.State);}
-//  }
-//  else{printf("SD Card not present\n");}
-  printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
-  printf("DMA : state %d, Error %d\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
+    uint32_t status = 0;
+    uint8_t file_name[] = {'x','x','x','x','.','r','g','b'};
+    
+    file_name[0] = (file_no/1000) + 0x30;
+    file_name[1] = ((file_no%1000)/100) + 0x30;
+    file_name[2] = ((file_no%100)/10) + 0x30;
+    file_name[3] = (file_no%10) + 0x30;
+    
+    printf ("upcoming file name : %x %x %x %x\n", file_name[0],file_name[1],file_name[2],file_name[3]);
+    
+    status = f_open (&fp, (char *)file_name, FA_CREATE_ALWAYS | FA_WRITE);
+//    status = f_open (&fp, "0020.rgb", FA_CREATE_ALWAYS | FA_WRITE);
+    if(status == FR_OK)
+    {
+        uint8_t byteswritten;
+        printf("File open\n");
+        status = f_write (&fp,(void *)_fb_base_hr, sizeof(_fb_base_hr), &byteswritten);
+        if(status == FR_OK)
+        {
+            status = f_close (&fp);
+            if(status == FR_OK)
+            {
+                printf("Safe to remove SD Card\n");
+            }
+            else{printf("Failed while appending : %d\n", status);f_close (&fp);}
+        }
+        else{printf("File write failed : %d\n", status);f_close (&fp);}
+    }
+    else {printf("File open failed : %d\n",status);f_close (&fp);}
+    printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
+    printf("DMA : state %d, Error %d\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
 
 }
 
-void cam_init (uint32_t resolution)
+uint32_t file_name_to_no (uint8_t * f_name)
+{
+    uint32_t file_no = 0;
+    file_no = ((f_name[0] > 0x29) && (f_name[0] < 0x3A)) ?
+        (((f_name[0] - 0x30) * 1000) + 
+        ((f_name[1] - 0x30) * 100) +
+        ((f_name[2] - 0x30) * 10) +
+        ((f_name[3] - 0x30) * 1)) :
+        g_file_no;
+    return (file_no < g_file_no) ? g_file_no : file_no;
+}
+
+void get_file_no ()
 {
     printf("%s\n", __func__);
+    uint32_t status;
+    uint32_t no_bytes;
+    uint8_t file_buff[4];
+    FILINFO file_info;
+    DIR dp;
+    status = f_opendir (&dp, "/");
+    if(status == FR_OK)
+    {
+        do
+        {
+            status = f_readdir (&dp, &file_info);
+            if(status == FR_OK)
+            {
+                
+                g_file_no = file_name_to_no ((uint8_t *)file_info.fname); 
+                
+                printf("%s\n",file_info.fname);
+            }else{printf("Read dir failed : %d\n",status);}
+            
+        }while(file_info.fname[0] != '\0');
+        printf("File Number : %d\n", g_file_no);
+        status = f_closedir (&dp);
+        if(status == FR_OK)
+        {
+            printf("DIR Close\n");
+        }else{printf("Close DIR failed : 0x%x\n", status);}
+    }else{printf("DIR open failed : 0x%x\n", status);}
+}
+
+void cam_init (uint32_t expo_ms)
+{
+    printf("%s\n", __func__);
+    uint32_t rows;
+    g_expo_us = expo_ms * 1000;
+    rows = (g_expo_us/27) - (g_expo_us%27); // line_length(1388)/PCLK(50MHz)
+    CAMERA_IO_Write (CameraHwAddress, COARSE_INTEGRATION_TIME, rows);
 //    CAMERA_Init (resolution);
 //    trig_init ();
 }
 
-void cam_shot (uint32_t not_used)
+void cam_shot_start (uint32_t not_used)
 {
     printf("%s\n", __func__);
     static GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -676,54 +629,45 @@ void cam_shot (uint32_t not_used)
 
     GPIO_InitStruct.Pin = ARDUINO_A1_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
     HAL_GPIO_Init(ARDUINO_A1_GPIO_Port, &GPIO_InitStruct);
-    HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_hr, Im_size);
     __enable_irq() ;
-    HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 1);
-    for(uint32_t i = 0; i < 10000; i++)
-    {
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-        __NOP();
-    }
-    HAL_GPIO_WritePin (ARDUINO_D7_GPIO_Port, ARDUINO_D7_Pin, 0);
-//    printf("Flash Reg : 0x%x\n",  CAMERA_IO_Read (CameraHwAddress,AR0135_FLASH));
-    __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_VSYNC);
+    htim1.Instance->CCR1 = htim1.Instance->CNT + SHOT_TICKS;
+    HAL_TIM_OC_Start_IT (&htim1, TIM_CHANNEL_1);
+    HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_hr, Im_size);
+    HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 1);
 
 }
 
-void cam_flash (uint32_t not_used)
+void cam_shot_stop (uint32_t not_used)
 {
     printf("%s\n", __func__);
-    HAL_GPIO_WritePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin, 1);
-    for(uint32_t i = 0; i < 3*750; i++)
-    {
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-      __NOP();
-    }
-    HAL_GPIO_WritePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin, 0);
+    HAL_TIM_OC_Stop_IT (&htim1, TIM_CHANNEL_1);
+    HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 0);
+//    printf("Flash Reg : 0x%x\n",  CAMERA_IO_Read (CameraHwAddress,AR0135_FLASH));
+    __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_VSYNC);
+    
+}
 
+void cam_flash_start (uint32_t flash_percent)
+{
+    printf("%s\n", __func__);
+    uint32_t flash_ticks;
+    flash_ticks = (g_expo_us * flash_percent)/100;
+    flash_ticks = flash_ticks / 0.8333;
+    HAL_GPIO_WritePin (ARDUINO_A0_GPIO_Port, ARDUINO_A0_Pin, 1);
+    htim1.Instance->CCR2 = htim1.Instance->CNT + flash_ticks;
+    HAL_TIM_OC_Start_IT (&htim1, TIM_CHANNEL_2);
+    
+}
+
+void cam_flash_stop (uint32_t not_used)
+{
+    
+    printf("%s\n", __func__);
+    HAL_GPIO_WritePin (ARDUINO_A0_GPIO_Port, ARDUINO_A0_Pin, 0);
+    HAL_TIM_OC_Stop_IT (&htim1, TIM_CHANNEL_2);
+    HAL_TIM_OC_DeInit (&htim1);
 }
 
 void cam_save (uint32_t file_no)
@@ -736,10 +680,13 @@ void cam_save (uint32_t file_no)
 //  }
 
     static GPIO_InitTypeDef GPIO_InitStruct = {0};
-    img_compress_rgb ();
 //      HAL_DCMI_Stop (&hdcmi);
+    img_compress_rgb ();
+    HAL_Delay (1);
     write_sd_card (file_no);
     trig_init ();
+    HAL_ADC_Start (&hadc3);
+    printf("ADC value is : %d\n", HAL_ADC_GetValue (&hadc3));
 //    cam_state = CAM_INIT;
 //    cam_state_change = true;
 //    cam_param = CAMERA_RAW;
@@ -938,7 +885,7 @@ uint8_t img_compress_rgb (void)
     }
     return 0;
 }
-
+/*
 uint8_t img_compress_16 (uint32_t index)
 {
     static uint32_t cmpr_index;
@@ -1195,7 +1142,7 @@ uint8_t lcd_bayer2rgb (uint32_t index)
     return 0;
             
 }
-
+*/
 /* USER CODE END 4 */
 
 /**

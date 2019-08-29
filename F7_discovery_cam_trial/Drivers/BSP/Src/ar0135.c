@@ -93,10 +93,10 @@ static uint16_t ARRAW_EXT_TRIG[][2]=
 {
 	{RESET_REGISTER, 0x1D8},    //0
 	{DIGITAL_TEST, 0x04A0},     //1
-	{PRE_PLL_CLK_DIV, 2},       //2
-	{PLL_MULTIPLIER, 40},       //4
-	{VT_SYS_CLK_DIV, 5},        //5
-	{VT_PIX_CLK_DIV, 2},        //6
+	{PRE_PLL_CLK_DIV, AR0135_PLL_N},       //2
+	{PLL_MULTIPLIER, AR0135_PLL_M},       //4
+	{VT_SYS_CLK_DIV, AR0135_PLL_P1},        //5
+	{VT_PIX_CLK_DIV, AR0135_PLL_P2},        //6
 	{DIGITAL_BINNING, 0},       //7
 	{ROW_SPEED, 0},             //8
 	{Y_ADDR_START, 0},          //9
@@ -105,18 +105,18 @@ static uint16_t ARRAW_EXT_TRIG[][2]=
 	{X_ADDR_END, 1279},         //12
 	{FRAME_LENGTH_LINES, 960+23},//13
 	{LINE_LENGTH_PCK, 1280+108},//14
-	{COARSE_INTEGRATION_TIME, 25},//15
-	{FINE_INTEGRATION_TIME, 0}, //16
+//	{COARSE_INTEGRATION_TIME, 25},//15
+//	{FINE_INTEGRATION_TIME, 0}, //16
 	{Y_ODD_INC, 1},             //17
 	{Y_ADDR_START_CB, 0},       //18
 	{X_ADDR_START_CB, 0},       //19
 	{Y_ADDR_END_CB, 240},       //20
 	{X_ADDR_END_CB, 320},       //21
-//	{GREEN1_GAIN, 48},          //23
-//	{BLUE_GAIN, 66},            //24
-//	{RED_GAIN, 66},             //25
-//	{GREEN2_GAIN, 48},          //26
-	{GLOBAL_GAIN, 0xF0},        //22
+	{GREEN1_GAIN, 48},          //23
+	{BLUE_GAIN, 66},            //24
+	{RED_GAIN, 66},             //25
+	{GREEN2_GAIN, 48},          //26
+//	{GLOBAL_GAIN, 0xF0},        //22
 	{TEST_DATA_GREENR, 0},      //27
 	{TEST_DATA_GREENB, 0},      //28
 	{TEST_DATA_RED, 0},         //29
@@ -192,17 +192,6 @@ void ar0135_Init(uint16_t DeviceAddr, uint32_t resolution)
               CAMERA_IO_Write(DeviceAddr, ARRAW_EXT_TRIG[index][0], ARRAW_EXT_TRIG[index][1]);
               CAMERA_Delay(2);
             } 
-            uint32_t read_val;
-            for(index=0; index<(sizeof(ARRAW_EXT_TRIG)/4); index++)
-            {
-                read_val = CAMERA_IO_Read (DeviceAddr,ARRAW_EXT_TRIG[index][0]);
-                if(ARRAW_EXT_TRIG[index][1] != read_val)
-                {
-                    printf("Index %d failed : 0x%x = %d\n", index,
-                           ARRAW_EXT_TRIG[index][0], read_val);
-                }
-              CAMERA_Delay(2);
-            } 
             
             break;
         break;
@@ -212,8 +201,6 @@ void ar0135_Init(uint16_t DeviceAddr, uint32_t resolution)
 void ar0135_Config(uint16_t DeviceAddr, uint32_t reg, uint32_t value, uint32_t Unused)
 {
     CAMERA_IO_Write (DeviceAddr, reg, value);
-    __NOP();
-    __NOP();
     __NOP();
     __NOP();
     __NOP();
