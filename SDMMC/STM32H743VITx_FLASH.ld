@@ -177,6 +177,18 @@ SECTIONS
     . = ALIGN(8);
   } >DTCMRAM
 
+  .fb_memory_lr (NOLOAD) :
+  {
+    . = ALIGN(4);
+    _bla = .;
+    . = . + 256K;
+
+    . = ALIGN(4);
+    _blu = .;
+    . = . + 256K;
+  
+
+  } >RAM_D1
   
 
   /* Remove information from the standard libraries */

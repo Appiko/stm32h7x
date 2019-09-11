@@ -21,7 +21,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "dma.h"
-#include "fatfs.h"
 #include "mdma.h"
 #include "sdmmc.h"
 #include "usart.h"
@@ -39,7 +38,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define BUFF_BYTES 256
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -50,13 +49,15 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-FIL p_file;
+extern uint8_t _bla[1024 * BUFF_BYTES];
+extern uint8_t _blu[1024 * BUFF_BYTES];
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+//uint8_t test_file_append ();
 
 /* USER CODE END PFP */
 
@@ -97,54 +98,55 @@ int main(void)
   MX_DMA_Init();
   MX_MDMA_Init();
   MX_SDMMC1_SD_Init();
-  MX_FATFS_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   
-  HAL_SD_Init (&hsd1);
-  uart_msp_init ();
-
-  printf("Hello world\n");
+  
+  printf("Hello world from SDMMC testing app\n");
+  
+  printf("Bla address 0x%x Blu address 0x%x\n", _bla, _blu);
+  
+//  HAL_SD_InitCard (&hsd1);
+  
+  uint32_t buff_size = 1024 * BUFF_BYTES;
+  
   uint32_t status;
-  uint8_t string = {'S','t','r','i','n','g','\n'};
-  uint8_t byte_no;
-  printf("FatFs Vol : %d\n", SDFatFS.drv);
-  printf("FatFs  ID : %d\n", SDFatFS.id);
-  printf("FatFs Path : %s\n",SDPath );
-  if(BSP_SD_IsDetected ())
-  {
-//    printf("SD Detected\n");
-    if(HAL_SD_Init (&hsd1)== FR_OK)
-    {
-        printf("SD Initialize\n");
-        status = f_mount (&SDFatFS,(const TCHAR * )SDPath, 0);
-        if(status == FR_OK)
-        {
-            printf("Mount Successful\n");
-            status = f_open(&p_file, "bla_bla.txt", FA_CREATE_ALWAYS | FA_WRITE);
-            if(status == FR_OK) 
-            {
-                printf("File opened successfully..!\n");
-                status = f_write (&p_file,string, sizeof(string), &byte_no);
-                if(status == FR_OK)
-                {
-                    HAL_GPIO_WritePin (LED_G_GPIO_Port, LED_G_Pin, 0);
-                    f_close (&p_file);
-                }
-                else
-                {
-                    printf("Failed while writing\n");
-                }
-            }
-            else
-            {
-                HAL_GPIO_WritePin (LED_B_GPIO_Port, LED_B_Pin,0);
-                printf("Status : %d\n", status);
-            }
-        }
-    }
-  }
-  else{ HAL_GPIO_WritePin (LED_R_GPIO_Port, LED_R_Pin,0); }
+  memset(_bla, 0x35, buff_size);
+  memset(_blu, 0, buff_size);
+  
+  HAL_Delay (100);
+
+//  status = HAL_SD_ConfigSpeedBusOperation (&hsd1, SDMMC_HSpeed_CLK_DIV);
+  status = HAL_SD_ConfigWideBusOperation (&hsd1, SDMMC_BUS_WIDE_4B);
+  printf("Bus status : %d %d, Bus 0x%x, clk_div/2 %d\n", status, hsd1.ErrorCode,
+         hsd1.Init.BusWide, hsd1.Init.ClockDiv);
+
+  printf("SD Card Info : %d %d\n", hsd1.SdCard.CardType,
+         hsd1.SdCard.CardVersion);
+  
+  printf("Block info : %d %d %d %d\n",hsd1.SdCard.BlockSize, hsd1.SdCard.BlockNbr,
+         hsd1.SdCard.LogBlockSize, hsd1.SdCard.LogBlockNbr);
+
+  printf("Blu before : %x %x %x %x\n", _blu[0], _blu[256], _blu[512], _blu[1023]);
+  
+  printf("Bla before : %x %x %x %x\n", _bla[0], _bla[256], _bla[512], _bla[1023]);
+  
+  printf("Length : %d\n", buff_size/hsd1.SdCard.BlockSize);
+//  HAL_GPIO_TogglePin (SIG_1_GPIO_Port, SIG_1_Pin);
+  status = HAL_SD_WriteBlocks_DMA (&hsd1, _bla, hsd1.SdCard.BlockNbr/2, buff_size/hsd1.SdCard.BlockSize);
+  while (hsd1.State != HAL_SD_STATE_READY);
+  HAL_GPIO_TogglePin (SIG_1_GPIO_Port, SIG_1_Pin);
+  printf("Write status : status %d, state %d ,Error code %d, Context 0x%x\n", status, hsd1.State, hsd1.ErrorCode, hsd1.Context);
+  
+  
+  HAL_Delay (100);
+//  while(hsd1.ErrorCode == HAL_SD_ERROR_NONE);
+  
+  status = HAL_SD_ReadBlocks_DMA (&hsd1, _blu, hsd1.SdCard.BlockNbr/2, buff_size/hsd1.SdCard.BlockSize);
+  printf("Read status : status %d, state %d ,Error code %d, Context 0x%x\n", status, hsd1.State, hsd1.ErrorCode, hsd1.Context);
+  
+  HAL_Delay (10);
+  printf("Blu after : %x %x %x %x\n", _blu[0], _blu[256], _blu[512], _blu[1023]);
   
   /* USER CODE END 2 */
 
@@ -186,7 +188,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 3;
   RCC_OscInitStruct.PLL.PLLN = 200;
   RCC_OscInitStruct.PLL.PLLP = 2;
-  RCC_OscInitStruct.PLL.PLLQ = 16;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
   RCC_OscInitStruct.PLL.PLLR = 2;
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
@@ -222,6 +224,43 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+//
+//uint8_t test_file_append ()
+//{
+//    static uint32_t res;
+//    uint32_t byteswritten;
+//    uint8_t p_data[512];
+//    uint32_t len = sizeof(p_data);
+//    for(uint32_t i = 0; i < len-1; i++)
+//    {
+//        p_data[i] = i%255;
+//    }
+//    p_data[len-1] = '\n';
+////    res = f_mount (&SDFatFS, (TCHAR const *)SDPath, 0); 
+////    if(res == FR_OK)
+//    {
+////        if(f_open (&p_file, "bla_bla.txt", FA_OPEN_APPEND | FA_READ | FA_WRITE) == FR_OK)
+//        {
+//            HAL_GPIO_WritePin (SIG_2_GPIO_Port, SIG_2_Pin, 0);
+//            res = f_write (&p_file, p_data, len, (void *)byteswritten);
+//            if((res == FR_OK))
+//            {
+//                HAL_GPIO_WritePin (SIG_2_GPIO_Port, SIG_2_Pin, 1);
+////                f_close(&p_file);
+//            }
+//        }
+////        else
+////        {
+////            printf("Append fail\n");
+////        }
+//    }
+////    else
+////    {
+////        printf("Mount Fail\n");
+////    }
+//    return res;
+//    
+//}
 
 /* USER CODE END 4 */
 
