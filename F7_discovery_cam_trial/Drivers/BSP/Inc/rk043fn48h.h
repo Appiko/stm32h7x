@@ -77,18 +77,18 @@
 /** 
   * @brief  RK043FN48H Timing  
   */     
-//#define  RK043FN48H_HSYNC            ((uint16_t)41)   /* Horizontal synchronization */
-#define  RK043FN48H_HSYNC            ((uint16_t)41)   /* Horizontal synchronization modified*/
-//#define  RK043FN48H_HBP              ((uint16_t)13)   /* Horizontal back porch      */
-//#define  RK043FN48H_HFP              ((uint16_t)32)   /* Horizontal front porch     */
-#define  RK043FN48H_HBP              ((uint16_t)80)   /* Horizontal back porch   modified   */
-#define  RK043FN48H_HFP              ((uint16_t)80)   /* Horizontal front porch  modified   */
-//#define  RK043FN48H_VSYNC            ((uint16_t)10)   /* Vertical synchronization   */
-#define  RK043FN48H_VSYNC            ((uint16_t)10)   /* Vertical synchronization  modified */
-//#define  RK043FN48H_VBP              ((uint16_t)2)    /* Vertical back porch        */
-//#define  RK043FN48H_VFP              ((uint16_t)2)    /* Vertical front porch       */
-#define  RK043FN48H_VBP              ((uint16_t)16)    /* Vertical back porch  modified      */
-#define  RK043FN48H_VFP              ((uint16_t)16)    /* Vertical front porch modified      */
+#define  RK043FN48H_HSYNC            ((uint16_t)41)   /* Horizontal synchronization */
+//#define  RK043FN48H_HSYNC            ((uint16_t)41)   /* Horizontal synchronization modified*/
+#define  RK043FN48H_HBP              ((uint16_t)13)   /* Horizontal back porch      */
+#define  RK043FN48H_HFP              ((uint16_t)32)   /* Horizontal front porch     */
+//#define  RK043FN48H_HBP              ((uint16_t)80)   /* Horizontal back porch   modified   */
+//#define  RK043FN48H_HFP              ((uint16_t)80)   /* Horizontal front porch  modified   */
+#define  RK043FN48H_VSYNC            ((uint16_t)10)   /* Vertical synchronization   */
+//#define  RK043FN48H_VSYNC            ((uint16_t)10)   /* Vertical synchronization  modified */
+#define  RK043FN48H_VBP              ((uint16_t)2)    /* Vertical back porch        */
+#define  RK043FN48H_VFP              ((uint16_t)2)    /* Vertical front porch       */
+//#define  RK043FN48H_VBP              ((uint16_t)16)    /* Vertical back porch  modified      */
+//#define  RK043FN48H_VFP              ((uint16_t)16)    /* Vertical front porch modified      */
 
 /** 
   * @brief  RK043FN48H frequency divider  
