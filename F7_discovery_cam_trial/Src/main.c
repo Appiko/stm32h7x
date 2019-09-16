@@ -66,7 +66,7 @@
 
 #define FLASH_TICKS 600
 
-#define SHOT_TICKS 1500
+#define SHOT_TICKS 1250
 typedef struct 
 {
     uint8_t b;
@@ -251,10 +251,11 @@ int main(void)
 
   Im_size = (1280*960)/4;
   memset (_fb_base_hr, 0, Im_size*4);
+  memset (_fb_base_rgb, 0, 320*240);
   CAMERA_Init(CAMERA_RAW);
   HAL_Delay(100);
   cam_state = CAM_INIT;
-  cam_param = 27;
+  cam_param = 15;
   cam_state_change = true;
 //  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
 //      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
@@ -473,7 +474,7 @@ void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin)
             {
                 cam_state = CAM_FLASH_START;
                 cam_state_change = true;
-                cam_param = 90;
+                cam_param = 95;
                 break;
             }
     }
@@ -540,7 +541,7 @@ void sd_init (void)
 
 void write_sd_card (uint32_t file_no)
 {
-    while(hdcmi.State != HAL_DCMI_STATE_READY);
+//    while(hdcmi.State != HAL_DCMI_STATE_READY);
     static attempts_remain = FILE_OPER_MAX_TRY;
     uint32_t status = 0;
     uint8_t file_name[] = {'x','x','x','x','.','r','g','b', '\0'};
@@ -737,6 +738,7 @@ void cam_save (uint32_t file_no)
 
     static GPIO_InitTypeDef GPIO_InitStruct = {0};
 //      HAL_DCMI_Stop (&hdcmi);
+//    while(hdcmi.DMA_Handle->State != HAL_DMA_STATE_READY);
     img_compress_rgb ();
     HAL_Delay (1);
     if(HAL_GPIO_ReadPin (SD_DETECT_GPIO_PORT, SD_DETECT_PIN) == GPIO_PIN_RESET)

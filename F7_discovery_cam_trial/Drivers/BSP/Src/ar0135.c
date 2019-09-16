@@ -18,7 +18,7 @@ static uint16_t AR320x240_EXT_TRIG[][2] =
 	{VT_SYS_CLK_DIV, 1 },
 	{VT_PIX_CLK_DIV, 8},
 	{DIGITAL_BINNING, 0},
-	{DIGITAL_TEST, 0x0480},
+	{DIGITAL_TEST, 0x04B0},
 	{RESET_REGISTER, 0x1990},
 	{LINE_LENGTH_PCK, 1650},
 	{Y_ADDR_START, 0},
@@ -47,7 +47,6 @@ static uint16_t AR320x240_EXT_TRIG[][2] =
 	{RED_GAIN, 66},
 	{GREEN2_GAIN, 48},
 	{AR0135_FLASH, 100},
-	{PLL_MULTIPLIER, 0x003A}    
 };
 
 static uint16_t AR320x240_STREAM[][2] = 
@@ -92,7 +91,7 @@ static uint16_t AR320x240_STREAM[][2] =
 static uint16_t ARRAW_EXT_TRIG[][2]=
 {
 	{RESET_REGISTER, 0x1D8},    //0
-	{DIGITAL_TEST, 0x04A0},     //1
+	{DIGITAL_TEST, 0x04B0},     //1
 	{PRE_PLL_CLK_DIV, AR0135_PLL_N},       //2
 	{PLL_MULTIPLIER, AR0135_PLL_M},       //4
 	{VT_SYS_CLK_DIV, AR0135_PLL_P1},        //5
@@ -112,15 +111,15 @@ static uint16_t ARRAW_EXT_TRIG[][2]=
 	{X_ADDR_START_CB, 0},       //19
 	{Y_ADDR_END_CB, 240},       //20
 	{X_ADDR_END_CB, 320},       //21
-	{GREEN1_GAIN, 48},          //23
-	{BLUE_GAIN, 66},            //24
-	{RED_GAIN, 66},             //25
-	{GREEN2_GAIN, 48},          //26
+	{GREEN1_GAIN, 24},          //23
+	{BLUE_GAIN, 30},            //24
+	{RED_GAIN, 30},             //25
+	{GREEN2_GAIN, 24},          //26
 //	{GLOBAL_GAIN, 0xF0},        //22
-	{TEST_DATA_GREENR, 0},      //27
-	{TEST_DATA_GREENB, 0},      //28
-	{TEST_DATA_RED, 0},         //29
-	{TEST_DATA_BLUE, 0xFFF},    //30
+	{TEST_DATA_GREENR, 0x020},      //27
+	{TEST_DATA_GREENB, 0x000},      //28
+	{TEST_DATA_RED, 0x000},         //29
+	{TEST_DATA_BLUE, 0x000},    //30
 	{TEST_PATTERN_MODE, 0},     //31
 	{AR0135_FLASH, 0x100},      //32
 };
