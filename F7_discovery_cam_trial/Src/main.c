@@ -67,6 +67,13 @@
 #define FLASH_TICKS 600
 
 #define SHOT_TICKS 1250
+
+
+#define CAM_FREQ 25
+
+#define CAM_PCLK ((CAM_FREQ * AR0135_PLL_M)/(AR0135_PLL_N * AR0135_PLL_P1 * AR0135_PLL_P2))
+
+#define ROW_TIME AR0135_LINE_LEN/CAM_PCLK
 typedef struct 
 {
     uint8_t b;
@@ -651,9 +658,10 @@ void get_file_no ()
 void cam_init (uint32_t expo_ms)
 {
     printf("%s\n", __func__);
-    uint32_t rows;
+    uint16_t rows;
+    uint32_t row_time = ROW_TIME;
     g_expo_us = expo_ms * 1000;
-    rows = (g_expo_us/133) - (g_expo_us%133); // line_length(1388)/PCLK(50MHz)
+    rows = (g_expo_us/row_time); // line_length(1388)/PCLK(50MHz)
     CAMERA_IO_Write (CameraHwAddress, COARSE_INTEGRATION_TIME, rows);
 //    CAMERA_Init (resolution);
 //    trig_init ();

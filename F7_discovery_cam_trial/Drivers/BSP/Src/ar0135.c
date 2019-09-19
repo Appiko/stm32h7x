@@ -97,7 +97,7 @@ static uint16_t ARRAW_EXT_TRIG[][2]=
 	{VT_SYS_CLK_DIV, AR0135_PLL_P1},        //5
 	{VT_PIX_CLK_DIV, AR0135_PLL_P2},        //6
 	{DIGITAL_BINNING, 0},       //7
-	{ROW_SPEED, 0},             //8
+	{ROW_SPEED, 16},             //8
 	{Y_ADDR_START, 0},          //9
 	{X_ADDR_START, 0},          //10
 	{Y_ADDR_END, 959},          //11

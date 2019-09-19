@@ -120,6 +120,10 @@
 /// 4 <= P2 <= 16 
 #define AR0135_PLL_P2   5
 
+
+#define AR0135_LINE_LEN 1388
+
+#define AR0135_FRAME_LEN 960+23  
 /** @defgroup OV9655_Exported_Functions
   * @{
   */ 
