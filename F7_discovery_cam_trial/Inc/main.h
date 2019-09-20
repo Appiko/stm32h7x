@@ -411,6 +411,7 @@ typedef enum
     CAM_FLASH_START,
     CAM_FLASH_END,
     CAM_SAVE,
+    CAM_LIGHT_CHECK,
     CAM_INVALID,
 }cam_state_t;
 

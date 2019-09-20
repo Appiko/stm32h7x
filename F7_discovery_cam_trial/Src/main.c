@@ -19,9 +19,6 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-#include <stdio.h>
-#include <string.h>
-
 #include "main.h"
 #include "adc.h"
 #include "crc.h"
@@ -164,10 +161,13 @@ void cam_flash_stop (uint32_t not_used);
 
 void cam_save (uint32_t file_no);
 
+void cam_light_check (uint32_t light_val);
+
 void get_file_no ();
 
+
 void ( * cam_func[CAM_INVALID]) (uint32_t) = {cam_init, cam_shot_start, cam_shot_stop, 
-cam_flash_start, cam_flash_stop, cam_save};
+cam_flash_start, cam_flash_stop, cam_save, cam_light_check};
 
 void sd_init (void);
 
@@ -255,6 +255,10 @@ int main(void)
   sd_init();
   get_file_no ();
   trig_init ();
+  HAL_ADC_Start (&hadc3);
+  HAL_ADC_GetValue (&hadc3);
+  
+  printf("RTC state : %d\n", hrtc.State);
 
   Im_size = (1280*960)/4;
   memset (_fb_base_hr, 0, Im_size*4);
@@ -262,7 +266,8 @@ int main(void)
   CAMERA_Init(CAMERA_RAW);
   HAL_Delay(100);
   cam_state = CAM_INIT;
-  cam_param = 15;
+  cam_param = 0;
+  g_expo_us = 750;
   cam_state_change = true;
 //  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
 //      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
@@ -347,7 +352,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-//    MX_USB_HOST_Process();
+    MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
       
@@ -374,15 +379,16 @@ void SystemClock_Config(void)
   /** Configure LSE Drive Capability 
   */
   HAL_PWR_EnableBkUpAccess();
+  __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_LOW);
   /** Configure the main internal regulator output voltage 
   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
   /** Initializes the CPU, AHB and APB busses clocks 
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 25;
@@ -422,7 +428,7 @@ void SystemClock_Config(void)
   PeriphClkInitStruct.PLLSAI.PLLSAIP = RCC_PLLSAIP_DIV8;
   PeriphClkInitStruct.PLLSAIDivQ = 1;
   PeriphClkInitStruct.PLLSAIDivR = RCC_PLLSAIDIVR_8;
-  PeriphClkInitStruct.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+  PeriphClkInitStruct.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
   PeriphClkInitStruct.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInitStruct.Usart6ClockSelection = RCC_USART6CLKSOURCE_PCLK2;
   PeriphClkInitStruct.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
@@ -437,6 +443,14 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_RTCEx_WakeUpTimerEventCallback (RTC_HandleTypeDef* hrtc)
+{
+//    printf("%s\n", __func__);
+    cam_state = CAM_LIGHT_CHECK;
+    cam_param = 0;
+    cam_state_change= true;
+}
+
 void HAL_DCMI_VsyncEventCallback (DCMI_HandleTypeDef* dcmiHandle)
 {
     cam_state = CAM_SAVE;
@@ -655,16 +669,14 @@ void get_file_no ()
     }else{printf("DIR open failed : 0x%x\n", status);}
 }
 
-void cam_init (uint32_t expo_ms)
+void cam_init (uint32_t not_used)
 {
     printf("%s\n", __func__);
     uint16_t rows;
     uint32_t row_time = ROW_TIME;
-    g_expo_us = expo_ms * 1000;
     rows = (g_expo_us/row_time); // line_length(1388)/PCLK(50MHz)
     CAMERA_IO_Write (CameraHwAddress, COARSE_INTEGRATION_TIME, rows);
-//    CAMERA_Init (resolution);
-//    trig_init ();
+
 }
 
 void cam_shot_start (uint32_t not_used)
@@ -764,6 +776,55 @@ void cam_save (uint32_t file_no)
 //      HAL_DCMI_DeInit (&hdcmi);
 //      HAL_DCMI_Init (&hdcmi);
 }
+
+void cam_light_check (uint32_t not_used)
+{
+    HAL_ADC_Start (&hadc3);
+    uint32_t light_val = 0;
+    uint32_t avg_light_val = 0;
+    for(uint32_t cycle= 0; cycle < 8; cycle++)
+    {
+        light_val += HAL_ADC_GetValue (&hadc3);
+    }
+    avg_light_val = light_val/8;
+    printf("%s : %d\n", __func__, avg_light_val);
+    if(light_val < 25)
+    {
+        printf("Dark\n");
+        //expo 15ms, analog gain 8
+        g_expo_us = 15000;
+        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x04B0);
+        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x100);
+    }
+    else if(light_val < 1500)
+    {
+        printf("Low light\n");
+        //expo 15ms analog gain 4
+        g_expo_us = 15000;
+        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x04A0);
+        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x100);
+    }
+    else if(light_val < 2500)
+    {
+        printf("Dim light\n");
+        //expo 10ms analog gain 8
+        g_expo_us = 10000;
+        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x04B0);
+        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x100);
+        
+    }
+    else if(light_val >= 2500)
+    {
+        printf("Bright Light\n");
+        //expo 1ms analog gain 1
+        g_expo_us = 1000;
+        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x0480);
+        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x0);
+    }
+        
+    cam_init (0);
+}
+
 
 int cambus_scan()
 {
