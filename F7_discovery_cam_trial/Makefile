@@ -17,7 +17,7 @@ TARGET = F7_discovery_cam_trial
 
 CAM_REG	= CAM_16BIT_REG
 
-CAM = AR0135
+CAM = IMX290
 
 ######################################
 # building variables
@@ -119,7 +119,10 @@ ifeq ($(CAM), AR0135)
 C_SOURCES += Drivers/BSP/Src/ar0135.c 
 else ifeq ($(CAM), OV9655)
 C_SOURCES += Drivers/BSP/Src/ov9655.c
+else ifeq ($(CAM), IMX290)
+C_SOURCES += Drivers/BSP/Src/imx290.c
 endif
+
 # ASM sources
 ASM_SOURCES =  \
 startup_stm32f746xx.s

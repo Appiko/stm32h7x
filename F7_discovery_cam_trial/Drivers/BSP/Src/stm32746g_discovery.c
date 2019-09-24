@@ -159,7 +159,7 @@ void            CAMERA_Delay(uint32_t Delay);
 void            CAMERA_IO_Write(uint8_t Addr, uint8_t Reg, uint8_t Value);
 uint8_t         CAMERA_IO_Read(uint8_t Addr, uint8_t Reg);
 #endif
-#ifdef CAM_16BIT_REG
+#ifdef AR0135
 void            CAMERA_IO_Write(uint8_t Addr, uint16_t Reg, uint16_t Value);
 uint16_t         CAMERA_IO_Read(uint8_t Addr, uint16_t Reg);
 #endif
@@ -782,7 +782,7 @@ uint8_t CAMERA_IO_Read(uint8_t Addr, uint8_t Reg)
 }
 #endif
 
-#ifdef CAM_16BIT_REG
+#ifdef AR0135
 /**
   * @brief  Camera writes single data.
   * @param  Addr: I2C address
@@ -813,6 +813,34 @@ uint16_t CAMERA_IO_Read(uint8_t Addr, uint16_t Reg)
 
   ret_value = read_value[0]<<8|read_value[1];
   return ret_value;
+}
+#endif
+#ifdef IMX290
+/**
+  * @brief  Camera writes single data.
+  * @param  Addr: I2C address
+  * @param  Reg: Register address 
+  * @param  Value: Data to be written
+  * @retval None
+  */
+void CAMERA_IO_Write(uint8_t Addr, uint16_t Reg, uint8_t Value)
+{
+  I2Cx_WriteMultiple(&hI2cExtHandler, Addr, (uint16_t)Reg, I2C_MEMADD_SIZE_16BIT,&Value, 1);
+}
+
+/**
+  * @brief  Camera reads single data.
+  * @param  Addr: I2C address
+  * @param  Reg: Register address 
+  * @retval Read data
+  */
+uint8_t CAMERA_IO_Read(uint8_t Addr, uint16_t Reg)
+{
+  uint8_t read_value;
+
+  I2Cx_ReadMultiple(&hI2cExtHandler, Addr, Reg, I2C_MEMADD_SIZE_16BIT, &read_value, 1);
+
+  return read_value;
 }
 #endif
 /**

@@ -231,6 +231,9 @@ typedef enum
 #ifdef OV7725
 #define CAMERA_I2C_ADDRESS               ((uint16_t)0x42)
 #endif
+#ifdef IMX290
+#define CAMERA_I2C_ADDRESS               ((uint16_t)0x34)
+#endif
 #define AUDIO_I2C_ADDRESS                ((uint16_t)0x34)
 #define EEPROM_I2C_ADDRESS_A01           ((uint16_t)0xA0)
 #define EEPROM_I2C_ADDRESS_A02           ((uint16_t)0xA6)

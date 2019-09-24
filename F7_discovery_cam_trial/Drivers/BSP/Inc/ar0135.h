@@ -124,6 +124,13 @@
 #define AR0135_LINE_LEN 1388
 
 #define AR0135_FRAME_LEN 960+23  
+
+#define CAM_FREQ 25
+
+#define CAM_PCLK ((CAM_FREQ * AR0135_PLL_M)/(AR0135_PLL_N * AR0135_PLL_P1 * AR0135_PLL_P2))
+
+#define ROW_TIME AR0135_LINE_LEN/CAM_PCLK
+
 /** @defgroup OV9655_Exported_Functions
   * @{
   */ 

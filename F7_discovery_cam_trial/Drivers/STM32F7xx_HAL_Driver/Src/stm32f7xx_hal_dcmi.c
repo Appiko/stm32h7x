@@ -124,6 +124,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f7xx_hal.h"
+#include "main.h"
 
 /** @addtogroup STM32F7xx_HAL_Driver
   * @{
@@ -617,7 +618,7 @@ void HAL_DCMI_IRQHandler(DCMI_HandleTypeDef *hdcmi)
   {
     /* Clear the VSYNC flag */
     __HAL_DCMI_CLEAR_FLAG(hdcmi, DCMI_FLAG_VSYNCRI);
-    
+
     /* VSYNC Callback */
 #if (USE_HAL_DCMI_REGISTER_CALLBACKS == 1)
     /*Call registered DCMI vsync event callback*/

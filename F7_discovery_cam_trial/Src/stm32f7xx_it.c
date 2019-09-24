@@ -372,6 +372,14 @@ void DCMI_IRQHandler(void)
 {
   /* USER CODE BEGIN DCMI_IRQn 0 */
 
+    if(DCMI->RISR & 0x08)
+    {
+        HAL_GPIO_TogglePin (ARDUINO_D4_GPIO_Port, ARDUINO_D4_Pin);
+    }
+    if(DCMI->RISR & 0x10)
+    {
+        HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin);
+    }
   /* USER CODE END DCMI_IRQn 0 */
   HAL_DCMI_IRQHandler(&hdcmi);
   /* USER CODE BEGIN DCMI_IRQn 1 */

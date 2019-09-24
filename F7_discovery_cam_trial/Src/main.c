@@ -41,10 +41,18 @@
 #include "stdbool.h"
 #include "stm32746g_discovery.h"
 #include "stm32746g_discovery_sdram.h"
-//#include "ov9655.h"
-#include "ar0135.h"
 #include "rk043fn48h.h"
 #include "fonts.h"
+
+#ifdef OV9655
+#include "ov9655.h"
+#endif
+#ifdef AR0135
+#include "ar0135.h"
+#endif
+#ifdef IMX290
+#include "imx290.h"
+#endif
 //#include "font24.c"
 /* USER CODE END Includes */
 
@@ -55,8 +63,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PIX_H 960
-#define PIX_W 1280
+#define PIX_H 1080
+#define PIX_W 1920
 
 
 #define FILE_OPER_MAX_TRY 3
@@ -66,11 +74,6 @@
 #define SHOT_TICKS 1250
 
 
-#define CAM_FREQ 25
-
-#define CAM_PCLK ((CAM_FREQ * AR0135_PLL_M)/(AR0135_PLL_N * AR0135_PLL_P1 * AR0135_PLL_P2))
-
-#define ROW_TIME AR0135_LINE_LEN/CAM_PCLK
 typedef struct 
 {
     uint8_t b;
@@ -93,13 +96,9 @@ void LCD_GPIO_Init(LTDC_HandleTypeDef *, void *);
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-//extern uint8_t _fb_base_lr[240][320];
-//extern RGB_data_t _fb_base_lcd[240][320];
-extern RGB_data_t _fb_base_rgb[240][320];
+extern RGB_data_t _fb_base_rgb[270][320];
 extern uint8_t _fb_base_hr[PIX_H ][PIX_W];
-//extern RGB_data_t _fb_base_ppm[PIX_H][PIX_W];
 FIL fp;
-//static uint8_t _fb_base_ppm[PIX_W*3];
 
 typedef enum
 {
@@ -248,102 +247,48 @@ int main(void)
 //  printf("First I2C device found : 0x%x\n",i2c_addr);
 
   
-//    LTDC_Init((uint32_t)_fb_base_rgb, 0, 0, 320, 240);
-  LTDC_Init((uint32_t)_fb_base_rgb, 80, 16, 400, 255);
+  LTDC_Init((uint32_t)_fb_base_rgb, 80, 1, 400, 270);
   BSP_SDRAM_Init();
-//  HAL_GPIO_TogglePin (ARDUINO_A0_GPIO_Port, ARDUINO_A0_Pin);
   sd_init();
   get_file_no ();
   trig_init ();
   HAL_ADC_Start (&hadc3);
   HAL_ADC_GetValue (&hadc3);
   
+  CAMERA_IO_Init();
+  
   printf("RTC state : %d\n", hrtc.State);
 
-  Im_size = (1280*960)/4;
+  Im_size = (PIX_H*PIX_W)/4;
   memset (_fb_base_hr, 0, Im_size*4);
   memset (_fb_base_rgb, 0, 320*240);
   CAMERA_Init(CAMERA_RAW);
   HAL_Delay(100);
-  cam_state = CAM_INIT;
-  cam_param = 0;
-  g_expo_us = 750;
-  cam_state_change = true;
-//  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
-//      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
-//      , hdcmi.DMA_Handle->Instance->NDTR, Im_size);
-//  while(hdcmi.State != HAL_DCMI_STATE_READY);
-
-
-//  HAL_DCMI_Stop (&hdcmi);
-//  
-//  Im_size = (320*240)/4;
-//  memset (_fb_base_lr, 0, Im_size*4);
-//  CAMERA_Init(CAMERA_R320x240);
-//  HAL_Delay(100);
-//  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_lr, Im_size);
-//  HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 1);
-//  HAL_Delay (1);
-//  HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 0);
-//  HAL_Delay(1500);
-//
-//  printf("DMA : Src 0x%x Dst0 0x%x Dst1 0x%x Len %d, Im_size %d\n", hdcmi.DMA_Handle->Instance->PAR
-//      , hdcmi.DMA_Handle->Instance->M0AR, hdcmi.DMA_Handle->Instance->M1AR
-//      , hdcmi.DMA_Handle->Instance->NDTR, Im_size);
+//  cam_state = CAM_INIT;
+//  cam_param = 0;
+//  g_expo_us = 750;
+//  cam_state_change = true;
+  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_hr, Im_size);
   
-//  while(hdcmi.DMA_Handle->Instance->NDTR);
-//  printf("DCMI : XCount %d XSize %d\n", hdcmi.XferCount, hdcmi.XferSize);
-//  printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
-//  printf("DMA : state %d, Error %d\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
-//  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, (uint32_t)_fb_base_lr, Im_size);
-
-    
+//  while(HAL_DCMI_STATE_READY != hdcmi.State);
   
-  //HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS , (uint32_t)FRAME_BUFFER, Im_size);
-/*
-  printf("\nLow Res : ");
-  printf("Bayer\n");
-  for(uint16_t i = 0; i < 10; i++)
+  HAL_Delay (1500);
+  
+  img_compress_rgb ();
+  
+  
+  printf("HR : \n");
+  for(uint32_t r = 0; r < 10; r++)
   {
-      for(uint32_t j=0; j<15;j++) printf("%d ", _fb_base_hr[i][j]);
-      printf("\n");
-  }
-
-  printf("\nRGB\n");
-  for(i = 0; i < 10; i++)
-  {
-      for(j=0; j<5; j++)
+      for(uint32_t w = 0; w < 10; w++)
       {
-        printf("%d ", _fb_base_lcd[i][j].r);
-        printf("%d ", _fb_base_lcd[i][j].g);
-        printf("%d ", _fb_base_lcd[i][j].b);
-        printf("   ");
+          printf("%d ", _fb_base_hr[r][w]);
       }
       printf("\n");
   }
-
-  printf("\nHigh Res : ");
-  printf("Bayer\n");
-  for(uint16_t i = 950; i < 960; i++)
-  {
-      for(uint32_t j=1275; j<1280;j++) printf("%d ", _fb_base_hr[i][j]);
-      printf("\n");
-  }
-
-  printf("\nRGB\n");
-  for(i = 950; i < 960; i++)
-  {
-      for(j=1275; j<1280; j++)
-      {
-        printf("%d ", _fb_base_ppm[i][j].r);
-        printf("%d ", _fb_base_ppm[i][j].g);
-        printf("%d ", _fb_base_ppm[i][j].b);
-        printf("   ");
-      }
-      printf("\n");
-  }
-
- */
+    printf("DCMI : state %d, Error %d\n",hdcmi.State, hdcmi.ErrorCode);
+    printf("DMA : state %d, Error %d\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
+  
   
   /* USER CODE END 2 */
 
@@ -453,13 +398,20 @@ void HAL_RTCEx_WakeUpTimerEventCallback (RTC_HandleTypeDef* hrtc)
 
 void HAL_DCMI_VsyncEventCallback (DCMI_HandleTypeDef* dcmiHandle)
 {
-    cam_state = CAM_SAVE;
-    cam_state_change = 1;
-    cam_param = ++g_file_no;
-//    dcmi_done ();
-    printf("%s\n", __func__);
+//    HAL_GPIO_TogglePin (ARDUINO_D4_GPIO_Port, ARDUINO_D4_Pin);
+//    __HAL_DCMI_DISABLE_IT(&hdcmi, DCMI_IT_VSYNC);
+//    cam_state = CAM_SAVE;
+//    cam_state_change = 1;
+//    cam_param = ++g_file_no;
+////    dcmi_done ();
+//    printf("%s\n", __func__);
 }
 
+void HAL_DCMI_LineEventCallback (DCMI_HandleTypeDef* hdcmi)
+{
+//    HAL_GPIO_TogglePin (ARDUINO_D2_GPIO_Port, ARDUINO_D2_Pin);
+}
+/*
 void HAL_TIM_PWM_PulseFinishedCallback (TIM_HandleTypeDef* htim)
 {
     if(htim->Instance == TIM1)
@@ -484,6 +436,7 @@ void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin)
     switch(GPIO_Pin)
     {
         case ARDUINO_A3_Pin : 
+            printf("Sense Trigger\n");
         case USER_BUTTON_Pin : 
             {
                 cam_state = CAM_SHOT_START;
@@ -500,7 +453,7 @@ void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin)
             }
     }
 }
-
+*/
 void trig_init ()
 {
     static GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -672,10 +625,10 @@ void get_file_no ()
 void cam_init (uint32_t not_used)
 {
     printf("%s\n", __func__);
-    uint16_t rows;
-    uint32_t row_time = ROW_TIME;
-    rows = (g_expo_us/row_time); // line_length(1388)/PCLK(50MHz)
-    CAMERA_IO_Write (CameraHwAddress, COARSE_INTEGRATION_TIME, rows);
+//    uint16_t rows;
+//    uint32_t row_time = ROW_TIME;
+//    rows = (g_expo_us/row_time); // line_length(1388)/PCLK(50MHz)
+//    CAMERA_IO_Write (CameraHwAddress, COARSE_INTEGRATION_TIME, rows);
 
 }
 
@@ -711,9 +664,12 @@ void cam_shot_start (uint32_t not_used)
     
     __enable_irq() ;
     htim1.Instance->CCR1 = htim1.Instance->CNT + SHOT_TICKS;
-    HAL_TIM_OC_Start_IT (&htim1, TIM_CHANNEL_1);
+//    HAL_TIM_OC_Start_IT (&htim1, TIM_CHANNEL_1);
+//    HAL_GPIO_WritePin (ARDUINO_D4_GPIO_Port, ARDUINO_D4_Pin, 1);
+    __HAL_DCMI_CLEAR_FLAG(&hdcmi, DCMI_FLAG_VSYNC);
+    __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_VSYNC);
     HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)_fb_base_hr, Im_size);
-    HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 1);
+//    HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 1);
 
 }
 
@@ -721,8 +677,7 @@ void cam_shot_stop (uint32_t not_used)
 {
     printf("%s\n", __func__);
     HAL_TIM_OC_Stop_IT (&htim1, TIM_CHANNEL_1);
-    HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 0);
-    __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_VSYNC);
+//    HAL_GPIO_WritePin (ARDUINO_A2_GPIO_Port, ARDUINO_A2_Pin, 0);
     
 }
 
@@ -757,7 +712,7 @@ void cam_save (uint32_t file_no)
 //  }
 
     static GPIO_InitTypeDef GPIO_InitStruct = {0};
-//      HAL_DCMI_Stop (&hdcmi);
+      HAL_DCMI_Stop (&hdcmi);
 //    while(hdcmi.DMA_Handle->State != HAL_DMA_STATE_READY);
     img_compress_rgb ();
     HAL_Delay (1);
@@ -793,24 +748,24 @@ void cam_light_check (uint32_t not_used)
         printf("Dark\n");
         //expo 15ms, analog gain 8
         g_expo_us = 15000;
-        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x04B0);
-        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x100);
+//        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x04B0);
+//        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x100);
     }
     else if(light_val < 1500)
     {
         printf("Low light\n");
         //expo 15ms analog gain 4
         g_expo_us = 15000;
-        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x04A0);
-        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x100);
+//        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x04A0);
+//        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x100);
     }
     else if(light_val < 2500)
     {
         printf("Dim light\n");
         //expo 10ms analog gain 8
         g_expo_us = 10000;
-        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x04B0);
-        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x100);
+//        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x04B0);
+//        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x100);
         
     }
     else if(light_val >= 2500)
@@ -818,8 +773,8 @@ void cam_light_check (uint32_t not_used)
         printf("Bright Light\n");
         //expo 1ms analog gain 1
         g_expo_us = 1000;
-        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x0480);
-        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x0);
+//        CAMERA_IO_Write (CameraHwAddress, DIGITAL_TEST, 0x0480);
+//        CAMERA_IO_Write (CameraHwAddress, AR0135_FLASH, 0x0);
     }
         
     cam_init (0);
@@ -924,8 +879,8 @@ uint16_t Width, uint16_t Height)
     periph_clk_init_struct.PLLSAIDivR = RCC_PLLSAIDIVR_4;
     HAL_RCCEx_PeriphCLKConfig(&periph_clk_init_struct);
     /* Initialize the LCD pixel width and pixel height */
-    hltdc.LayerCfg->ImageWidth = PIX_W/4;
-    hltdc.LayerCfg->ImageHeight = PIX_H/4;
+    hltdc.LayerCfg->ImageWidth = 320;
+    hltdc.LayerCfg->ImageHeight = 240;
 //    hltdc.LayerCfg->ImageWidth = RK043FN48H_WIDTH;
 //    hltdc.LayerCfg->ImageHeight = RK043FN48H_HEIGHT;
     hltdc.Init.Backcolor.Blue = 0;/* Background value */
@@ -974,10 +929,12 @@ uint8_t CAMERA_Init(uint32_t Resolution) /*Camera initialization*/
 //    memcpy ();
     uint8_t status = CAMERA_ERROR;
     CameraHwAddress = CAMERA_I2C_ADDRESS;
+    
+    
     /* Read ID of Camera module via I2C */
-    if(ar0135_ReadID(CameraHwAddress) == AR0135_ID)
+    if(CAMERA_IO_Read (CameraHwAddress,0x3008) == 0xA0)
     {
-        camera_driv = &ar0135_drv;/* Initialize the camera driver structure */
+        camera_driv = &imx290_drv;/* Initialize the camera driver structure */
         {
             printf("Correct address.!\n");
             
@@ -1008,7 +965,7 @@ uint8_t img_compress_rgb (void)
     for(uint32_t index = 0; index < PIX_H; index += 4)
     {
         cmpr_index = index/4;
-        for(uint32_t hr_i = 0, lr_i = 0; hr_i < PIX_W; hr_i += 4, lr_i++)
+        for(uint32_t hr_i = 0, lr_i = 0; hr_i < PIX_W; hr_i += 6, lr_i++)
         {
             _fb_base_rgb[cmpr_index][lr_i].r = _fb_base_hr[index][hr_i + 1];
             _fb_base_rgb[cmpr_index][lr_i].g = (_fb_base_hr[index][hr_i]

@@ -183,7 +183,7 @@ SECTIONS
 */
     . = ALIGN(4);
     _fb_base_hr = .;
-    . = . + 1500K + 96K;
+    . = . + 3M + 96K;
 /*
     . = ALIGN(4);
     _fb_base_ppm = .;
