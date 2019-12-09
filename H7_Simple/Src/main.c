@@ -9,10 +9,10 @@
   * <h2><center>&copy; Copyright (c) 2019 STMicroelectronics.
   * All rights reserved.</center></h2>
   *
-  * This software component is licensed by ST under BSD 3-Clause license,
-  * the "License"; You may not use this file except in compliance with the
-  * License. You may obtain a copy of the License at:
-  *                        opensource.org/licenses/BSD-3-Clause
+  * This software component is licensed by ST under Ultimate Liberty license
+  * SLA0044, the "License"; You may not use this file except in compliance with
+  * the License. You may obtain a copy of the License at:
+  *                             www.st.com/SLA0044
   *
   ******************************************************************************
   */
@@ -31,21 +31,75 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "camera.h"
 #include "stdio.h"
+#include "ar0135.h"
 #include "ov7725.h"
-#include "cambus.h"
-#include "stdbool.h"
+#include "ov7725_regs.h"
+
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define PIX_H 480
-#define PIX_W 640
+
+typedef enum
+{
+    CAM_TRIG,
+    CAM_FLASH,
+    CAM_SAVE,
+    CAM_DONE,
+        
+}camera_state_t;
+
+typedef enum
+{
+    AT_READ,
+    AT_SEND,
+    AT_UPDATE,
+}at_state_t;
+
+typedef enum
+{
+    MOD_INIT,
+    MOD_STRAT,
+    MOD_STOP,
+}module_state_t;
+
+typedef enum
+{
+    MOTION_MOD,
+    LIGHT_MOD,
+    CAMERA_MOD,
+    MOD_MAX,
+        
+}modules_t;
+
+
+#define FILE_OPER_MAX_TRY 3
+
+#define FLASH_TICKS 600
+
+#define SHOT_TICKS 1250
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-typedef uint8_t row_t[PIX_H][PIX_W];
+int cambus_scan()
+{
+    for (uint8_t addr=0x08; addr<=0x77; addr++) {
+//        HAL_Delay (10);
+        __disable_irq() ;
+        if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 1, 100) == HAL_OK) {
+            __enable_irq() ;
+            return (addr << 1) ;
+        }
+        __enable_irq() ;
+    }
+
+    return 0;
+}
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -56,14 +110,20 @@ typedef uint8_t row_t[PIX_H][PIX_W];
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint8_t arr_pix_row[(PIX_W * 3)] = {};
-FIL f_img;
+extern uint8_t _fb_base;
 
-const uint8_t ppm_header[] = {'P','6','\n','1','6',' ','0','5','\n','2','5','5','\n'};
-FRESULT res;
-uint32_t byteswritten;
-const TCHAR * filename = "bayer2ppm_01.ppm";
+FIL fp;
 
+uint8_t * p_fb_base = &_fb_base;
+
+static uint32_t g_expo_us;
+
+static uint32_t g_file_no;
+
+const uint8_t ppm_header[] = {'P','5','\n','3','2','0',' ','2','4','0','\n','2','5','5','\n'};
+
+
+volatile module_state_t g_arr_mod_state[MOD_MAX]; 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,17 +131,23 @@ void SystemClock_Config(void);
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 
-uint8_t img_file_init (void);
-
-void img_bayer2rgb_mid (uint32_t index, uint8_t * p_bayer);
 
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-  sensor_t sensor;
-
+void print_idata ()
+{
+    for(uint32_t row = 100; row < 110; row++)
+    {
+        for(uint32_t col = 100; col < 110; col++)
+        {
+            printf("%d ",p_fb_base[row * col]);
+        }
+        printf("\n");
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -124,63 +190,45 @@ int main(void)
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
-  uart_msp_init();
-  dcmi_msp_init ();
-  tim_msp_init ();
-  tim_pwm1_start ();
-  i2c_msp_init ();
-  sdmmc_msp_init ();
+  
+  
+//  HAL_I2C_MspInit (&hi2c1);
   printf("Hello World\n");
-  HAL_GPIO_WritePin (LED_R_GPIO_Port, LED_R_Pin, 0);
-  HAL_Delay (50);
-  HAL_GPIO_WritePin (LED_R_GPIO_Port, LED_R_Pin, 1);
-  HAL_GPIO_WritePin (LED_G_GPIO_Port, LED_G_Pin, 1);
-  uint8_t ver_addr = 10;
-  uint8_t ver[] = {0, 0} ;
-  uint32_t status_tx = 0;
-  uint32_t status_rx = 0;
-  status_tx = HAL_I2C_Master_Transmit (i2c_get_i2c1_handle(), 66, &ver_addr, 1, 100);
-  status_rx = HAL_I2C_Master_Receive (i2c_get_i2c1_handle(), 66, ver, 2, 100);
-  printf("Status TX 0x%x, Status RX 0x%x Ver 0x%x ID 0x%x\n", status_tx, status_rx, ver[0], ver[1]);
-//  printf("Err 0x%x, Mode 0x%x, State 0x%x\n", HAL_I2C_GetError (i2c_get_i2c1_handle ()),
-//  HAL_I2C_GetMode (i2c_get_i2c1_handle ()),HAL_I2C_GetState (i2c_get_i2c1_handle () );
-  uint8_t fs_status;
-//  fs_status = fatfs_init ();
-//  printf("FatFs Status : %d\n", fs_status);
-//  img_file_init ();
-  printf("I2C device found : %d\n", cambus_scan());
-  {
-      sensor.framesize = FRAMESIZE_VGA;
-      sensor.slv_addr = cambus_scan();
-  }
-  ov7725_init (&sensor);
   
-//  sensor.set_pixformat(&sensor, PIXFORMAT_RGB565);
-  image_t img = 
-  {
-      .bpp = 2,
-  };
+  printf ("FB Base : 0x%x Pointer : 0x%x\n", &_fb_base, p_fb_base);
+  printf ("Size of PPM Header : %d\n", sizeof(ppm_header));
+  HAL_TIM_PWM_Start (&htim1, TIM_CHANNEL_1);
+  memset (p_fb_base, 0, 240*576);
+  HAL_Delay (10);
   
-  sensor.snapshot(&sensor, &img);
+  g_arr_mod_state[CAMERA_MOD] = MOD_INIT;
+  sd_init ();
+  get_file_no ();
+  print_idata ();
 
-
-//  printf("Image dimensions(h x w) : %d x %d\n", img.h, img.w);
-//  printf("Image bpp : %d\n", img.bpp);
-  for(uint32_t i=0; i< img.h; i++)
-  {
-      img_bayer2rgb_mid (i, img.pixels);
-  }
+  uint32_t cam = cambus_scan ();
+  printf ("Cam : 0x%x\n", cam);
+  printf("Version : 0x%x\n",CAMERA_IO_Read (0x42, VER));
   
-//  printf("\n\n");
-
-//  for(uint32_t pix = 0; pix < img.h*img.w*2; pix++)
-//  {
-//      printf("%d ", img.pixels[pix]);
-//  }
   
-    printf("\nEOF \n");
-//  HAL_GPIO_WritePin (LED_G_GPIO_Port, LED_G_Pin, 0);
+  
+  ov7725_drv.Init(cam, FRAMESIZE_QVGA);
+////    
+  HAL_Delay (100);
+//
+  HAL_DCMI_Start_DMA (&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)p_fb_base, 200*200);
+  g_arr_mod_state[CAMERA_MOD] = MOD_STRAT;
 
+  HAL_Delay (1000);
+//  while(HAL_DCMI_GetState (&hdcmi) == HAL_DCMI_STATE_BUSY);
+//
+  printf ("DCMI State 0x%x Error 0x%x\n",hdcmi.State, hdcmi.ErrorCode);
+  printf ("DMA State 0x%x Error 0x%x\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
+  print_idata ();
+//  memcpy (p_fb_base, ppm_header, sizeof(ppm_header));
+//  
+  g_file_no++;
+  write_sd_card (g_file_no);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -221,7 +269,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 3;
   RCC_OscInitStruct.PLL.PLLN = 200;
   RCC_OscInitStruct.PLL.PLLP = 2;
-  RCC_OscInitStruct.PLL.PLLQ = 2;
+  RCC_OscInitStruct.PLL.PLLQ = 80;
   RCC_OscInitStruct.PLL.PLLR = 2;
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
@@ -265,160 +313,161 @@ void SystemClock_Config(void)
 static void MX_NVIC_Init(void)
 {
   /* DCMI_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DCMI_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DCMI_IRQn, 0, 1);
   HAL_NVIC_EnableIRQ(DCMI_IRQn);
+  /* DMA1_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
 }
 
 /* USER CODE BEGIN 4 */
-uint8_t img_file_init (void)
+void HAL_DCMI_LineEventCallback (DCMI_HandleTypeDef* hdcmi)
 {
-    res = f_mount (fatfs_get_fs_ptr (), (TCHAR const*)SDPath, 0); 
-    if(res == FR_OK)
-    {
-        if(f_open (&f_img, filename, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK)
-        {
-            res = f_write (&f_img, ppm_header, sizeof(ppm_header), (void *)byteswritten);
-            if((byteswritten > 0) &&(res == FR_OK))
-            {
-                f_close(&f_img);
-            }
-        }
-    }
-    return res;
+    static uint32_t hsync_count = 0;
+    
+//    printf("Hsync : %d\n",hsync_count++);
 }
 
-uint8_t img_file_append (uint8_t * p_data, uint32_t len)
+void HAL_DCMI_VsyncEventCallback (DCMI_HandleTypeDef* hdcmi)
 {
-    res = f_mount (fatfs_get_fs_ptr (), fatfs_get_fs_path (), 0); 
-    if(res == FR_OK)
-    {
-        if(f_open (&f_img, filename, FA_OPEN_APPEND | FA_WRITE) == FR_OK)
-        {
-            res = f_write (&f_img, p_data, len, (void *)byteswritten);
-            if((byteswritten > 0) &&(res == FR_OK))
-            {
-                f_close(&f_img);
-            }
-        }
-    }
-    return res;
-    
+//    printf("Vsync\n");
+  g_arr_mod_state[CAMERA_MOD] = MOD_STOP;
 }
 
-void img_bayer2rgb_mid (uint32_t index, uint8_t * p_bayer)
+
+void sd_init (void)
 {
-    //set last byte to '\n'
-    //GBRG bayer format
-    //if index = 0 || 479 (first and last row)
-    if (index == 0 || index == (PIX_H-1))
+    uint32_t status;
+  if(BSP_SD_IsDetected ())
+  {
+      printf("SD Card detected\n");
+      HAL_Delay (100);
+      status = SD_initialize (0);
+      if(status  == RES_OK)
+      {
+          printf("SD Card ready\n");
+          HAL_Delay (100);
+          status = f_mount (&SDFatFS, (const TCHAR*)SDPath, 1);
+          if(status == FR_OK)
+          {
+              printf("Mount successful\n");
+    
+          }
+          else {printf("Mount Failed : %d\n", status);}
+      }
+      else {printf("SD Card not ready : %d 0x%x\n", hsd1.State, status);}
+  }
+  else{printf("SD Card not present\n");}
+}
+
+void write_sd_card (uint32_t file_no)
+{
+//    while(hdcmi.State != HAL_DCMI_STATE_READY);
+    static attempts_remain = FILE_OPER_MAX_TRY;
+    uint32_t status = 0;
+    uint8_t file_name[] = {'f','o','o','_','x','x','x','x','.','r','g','b', '\0'};
+    
+    file_name[4] = (file_no/1000) + 0x30;
+    file_name[5] = ((file_no%1000)/100) + 0x30;
+    file_name[6] = ((file_no%100)/10) + 0x30;
+    file_name[7] = (file_no%10) + 0x30;
+    
+    printf("Attempt : %d\n", FILE_OPER_MAX_TRY - attempts_remain + 1);
+    printf ("upcoming file name : %x %x %x %x\n", file_name[4],file_name[5],file_name[6],file_name[7]);
+    if(attempts_remain > 0)
     {
-        //whole row zero
-        memset (arr_pix_row, 0, PIX_W*3);
-    }
-    //check if index is odd
-    else if (index % 2 != 0)
-    {
-        //run for start from red
-        for(uint32_t raw_i = 0, img_i = 0; raw_i < PIX_W; raw_i++, img_i += 3)
+        status = f_open (&fp, (char *)file_name, FA_CREATE_ALWAYS | FA_WRITE);
+//        status = f_open (&fp, "0020.rgb", FA_CREATE_ALWAYS | FA_WRITE);
+        if(status == FR_OK)
         {
-            //0th byte || (PIX_W - 1) byte 
-            if (raw_i == 0 || raw_i == (PIX_W - 1))
+            uint8_t byteswritten;
+            printf("File open\n");
+            status = f_write (&fp,(void *)p_fb_base, 320*240, &byteswritten);
+            if(status == FR_OK)
             {
-                //all zero
-                arr_pix_row[img_i] = 0;
-                arr_pix_row[img_i + 1] = 0;
-                arr_pix_row[img_i + 2] = 0;
+                status = f_close (&fp);
+                if(status == FR_OK)
+                {
+                    printf("Safe to remove SD Card\n");
+                    attempts_remain = FILE_OPER_MAX_TRY;
+                    return status;
+                }
+                else
+                {
+                    printf("Failed while appending : %d\n", status);
+                    f_close (&fp);
+                    attempts_remain--;
+                    write_sd_card (file_no);
+                }
             }
-            //check if odd byte
-            else if (raw_i % 2 != 0)
-            {
-                //red = avg of prev and next
-                arr_pix_row[img_i] = (p_bayer[(index * PIX_W) + raw_i - 1] +
-                    p_bayer[(index * PIX_W) + raw_i + 1])/2;
-                //green = reading
-                arr_pix_row[img_i + 1] = p_bayer[(index * PIX_W) + raw_i];
-                //blue = avg of top and bottom
-                arr_pix_row[img_i + 2] = (p_bayer[((index-1) * PIX_W) + raw_i] + 
-                    p_bayer[((index+1) * PIX_W) + raw_i])/2;
-            }
-            //if even 
             else
             {
-                //red = reading
-                arr_pix_row[img_i] = p_bayer[(index * PIX_W) + raw_i];
-                //green  = avg of top bottom sideways
-                arr_pix_row[img_i + 1] = (p_bayer[((index-1) * PIX_W) + raw_i] + 
-                    p_bayer[((index+1) * PIX_W) + raw_i] +
-                    p_bayer[(index * PIX_W) + raw_i - 1] +
-                    p_bayer[(index * PIX_W) + raw_i + 1])/4;
-                //blue = avg of corners
-                arr_pix_row[img_i + 2] = (p_bayer[((index-1) * PIX_W) + raw_i - 1] + 
-                    p_bayer[((index-1) * PIX_W) + raw_i + 1] + 
-                    p_bayer[((index+1) * PIX_W) + raw_i - 1] +
-                    p_bayer[((index+1) * PIX_W) + raw_i + 1])/4;
+                printf("File write failed : %d\n", status);
+                f_close (&fp);
+                attempts_remain--;
+                write_sd_card (file_no);
             }
         }
-    
-    }
-    //else index is even
-    else
-    {
-        //run for start from blue
-        for(uint32_t raw_i = 0, img_i = 0; raw_i < PIX_W; raw_i++, img_i += 3)
+        else
         {
-            //0th byte || (PIX_W - 1)th byte:
-            if (raw_i == 0 || raw_i == (PIX_W - 1))
-            {
-                //all zeros
-                arr_pix_row[img_i] = 0;
-                arr_pix_row[img_i+1] = 0;
-                arr_pix_row[img_i+2] = 0;
-            }
-            //check if odd byte
-            else if(raw_i%2 != 0)
-            {
-                //red = avg of corners
-                arr_pix_row[img_i] = (p_bayer[((index-1) * PIX_W) + raw_i - 1] + 
-                    p_bayer[((index-1) * PIX_W) + raw_i + 1] + 
-                    p_bayer[((index+1) * PIX_W) + raw_i - 1] +
-                    p_bayer[((index+1) * PIX_W) + raw_i + 1])/4;
-                //green = avg of top bottom sideways
-                arr_pix_row[img_i+1] = (p_bayer[((index-1) * PIX_W) + raw_i] + 
-                    p_bayer[((index+1) * PIX_W) + raw_i] +
-                    p_bayer[(index * PIX_W) + raw_i - 1] +
-                    p_bayer[(index * PIX_W) + raw_i + 1])/4;
-                //blue = reading
-                arr_pix_row[img_i+2] = p_bayer[(index * PIX_W) + raw_i];
-            }
-            //if even
-            else
-            {
-                //red = avg of top and bottom
-                arr_pix_row[img_i] = (p_bayer[((index-1) * PIX_W) + raw_i] + 
-                    p_bayer[((index+1) * PIX_W) + raw_i])/2;
-                //green = reading
-                arr_pix_row[img_i+1] = p_bayer[(index * PIX_W) + raw_i];
-                //blue = avg of prev and next
-                arr_pix_row[img_i+2] = (p_bayer[(index * PIX_W) + raw_i - 1] +
-                    p_bayer[(index * PIX_W) + raw_i + 1])/2;
-            }
+            printf("File open failed : %d\n",status);
+            f_close (&fp); 
+            attempts_remain--;
+            write_sd_card (file_no);
         }
     }
-    
-    
-    //append file
-//    uint8_t status;
-//     status = img_file_append (arr_pix_row, sizeof(arr_pix_row));
-//     printf("%d : %d\n", index, status);
-    
-    //print row
-    for(uint i = 0; i < PIX_W * 3; i++)
+    else 
     {
-        printf("%c", arr_pix_row[i]);
+        printf("All attempts failed\n");
+        g_file_no--;
+        attempts_remain = FILE_OPER_MAX_TRY;
     }
+
+}
+
+uint32_t file_name_to_no (uint8_t * f_name)
+{
+    uint32_t file_no = 0;
+    file_no = ((f_name[4] > 0x29) && (f_name[4] < 0x3A)) ?
+        (((f_name[4] - 0x30) * 1000) + 
+        ((f_name[5] - 0x30) * 100) +
+        ((f_name[6] - 0x30) * 10) +
+        ((f_name[7] - 0x30) * 1)) :
+        g_file_no;
+    return (file_no < g_file_no) ? g_file_no : file_no;
+}
+
+void get_file_no ()
+{
+    printf("%s\n", __func__);
+    uint32_t status;
+    uint32_t no_bytes;
+    uint8_t file_buff[4];
+    FILINFO file_info;
+    DIR dp;
+    status = f_opendir (&dp, "/");
+    if(status == FR_OK)
+    {
+        do
+        {
+            status = f_readdir (&dp, &file_info);
+            if(status == FR_OK)
+            {
+                
+                g_file_no = file_name_to_no ((uint8_t *)file_info.fname); 
+                
+                printf("%s\n",file_info.fname);
+            }else{printf("Read dir failed : %d\n",status);}
             
+        }while(file_info.fname[0] != '\0');
+        printf("File Number : %d\n", g_file_no);
+        status = f_closedir (&dp);
+        if(status == FR_OK)
+        {
+            printf("DIR Close\n");
+        }else{printf("Close DIR failed : 0x%x\n", status);}
+    }else{printf("DIR open failed : 0x%x\n", status);}
 }
-
 
 /* USER CODE END 4 */
 

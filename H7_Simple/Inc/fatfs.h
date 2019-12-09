@@ -39,14 +39,7 @@ extern FIL SDFile; /* File object for SD */
 void MX_FATFS_Init(void);
 
 /* USER CODE BEGIN Prototypes */
-uint8_t fatfs_init (void);
 
-
-uint8_t fatfs_mkfs ();
-
-FATFS * fatfs_get_fs_ptr ();
-
-TCHAR const * fatfs_get_fs_path ();
 /* USER CODE END Prototypes */
 #ifdef __cplusplus
 }

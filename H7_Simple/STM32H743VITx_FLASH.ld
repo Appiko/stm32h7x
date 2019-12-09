@@ -53,7 +53,7 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = 0x20020000;    /* end of RAM */
+_estack = 0x38004000;    /* end of RAM */
 /* Generate a link error if heap and stack don't fit into RAM */
 _Min_Heap_Size = 0x200;      /* required amount of heap  */
 _Min_Stack_Size = 0x400; /* required amount of stack */
@@ -62,7 +62,7 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 MEMORY
 {
 DTCMRAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K
-RAM_D1 (xrw)      : ORIGIN = 0x24000000, LENGTH = 512K
+RAM_D1 (xrw)      : ORIGIN = 0x24000000, LENGTH = 384K
 RAM_D2 (xrw)      : ORIGIN = 0x30000000, LENGTH = 288K
 RAM_D3 (xrw)      : ORIGIN = 0x38000000, LENGTH = 64K
 ITCMRAM (xrw)      : ORIGIN = 0x00000000, LENGTH = 64K
@@ -182,29 +182,10 @@ SECTIONS
   {
     . = ALIGN(4);
     _fb_base = .;
-    . = . + 400K + 96K;
-
-    . = ALIGN(4);
-    _fballoc = .;
-
-  } >RAM_D1
-
-  /* Misc DMA buffers kept in uncachable region */
-  .dma_memory (NOLOAD) :
-  {
-    . = ALIGN(4);
-    _line_buf = .;      /*Image line buffer.*/
-    . = . + 3K;
-
-    . = ALIGN(4);
-    _vfs_buf  = .;      /* VFS sturct + FATFS file buffer  (around 624 bytes) */
-    . = . + 1K;
-
-   . = ALIGN(4);
-    *(.dma_buffer)
-
+    . = . + 135K + 4K;
   } >RAM_D1
   
+ 
   /* Remove information from the standard libraries */
   /DISCARD/ :
   {
@@ -214,7 +195,6 @@ SECTIONS
   }
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
-
 }
 
 

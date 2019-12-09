@@ -112,14 +112,6 @@ void HAL_I2C_MspDeInit(I2C_HandleTypeDef* i2cHandle)
 } 
 
 /* USER CODE BEGIN 1 */
-void i2c_msp_init()
-{
-    HAL_I2C_MspInit (&hi2c1);
-}
-I2C_HandleTypeDef * i2c_get_i2c1_handle ()
-{
-    return &hi2c1;
-}
 
 /* USER CODE END 1 */
 

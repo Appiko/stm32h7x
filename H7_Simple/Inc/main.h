@@ -10,10 +10,10 @@
   * <h2><center>&copy; Copyright (c) 2019 STMicroelectronics.
   * All rights reserved.</center></h2>
   *
-  * This software component is licensed by ST under BSD 3-Clause license,
-  * the "License"; You may not use this file except in compliance with the
-  * License. You may obtain a copy of the License at:
-  *                        opensource.org/licenses/BSD-3-Clause
+  * This software component is licensed by ST under Ultimate Liberty license
+  * SLA0044, the "License"; You may not use this file except in compliance with
+  * the License. You may obtain a copy of the License at:
+  *                             www.st.com/SLA0044
   *
   ******************************************************************************
   */
@@ -65,8 +65,15 @@ void Error_Handler(void);
 #define LED_G_GPIO_Port GPIOC
 #define LED_B_Pin GPIO_PIN_2
 #define LED_B_GPIO_Port GPIOC
+#define GSM_EN_Pin GPIO_PIN_14
+#define GSM_EN_GPIO_Port GPIOB
+#define CAM_TRIGGER_Pin GPIO_PIN_15
+#define CAM_TRIGGER_GPIO_Port GPIOB
+#define CAM_TRIGGER_EXTI_IRQn EXTI15_10_IRQn
 #define SD_Detect_Pin GPIO_PIN_0
 #define SD_Detect_GPIO_Port GPIOD
+#define DCMI_PWRDN_Pin GPIO_PIN_7
+#define DCMI_PWRDN_GPIO_Port GPIOD
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

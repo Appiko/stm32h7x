@@ -77,6 +77,9 @@ void HAL_SD_MspInit(SD_HandleTypeDef* sdHandle)
     GPIO_InitStruct.Alternate = GPIO_AF12_SDIO1;
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+    /* SDMMC1 interrupt Init */
+    HAL_NVIC_SetPriority(SDMMC1_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
   /* USER CODE BEGIN SDMMC1_MspInit 1 */
 
   /* USER CODE END SDMMC1_MspInit 1 */
@@ -107,6 +110,8 @@ void HAL_SD_MspDeInit(SD_HandleTypeDef* sdHandle)
 
     HAL_GPIO_DeInit(GPIOD, GPIO_PIN_2);
 
+    /* SDMMC1 interrupt Deinit */
+    HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
   /* USER CODE BEGIN SDMMC1_MspDeInit 1 */
 
   /* USER CODE END SDMMC1_MspDeInit 1 */
@@ -114,14 +119,6 @@ void HAL_SD_MspDeInit(SD_HandleTypeDef* sdHandle)
 } 
 
 /* USER CODE BEGIN 1 */
-void sdmmc_msp_init ()
-{
-    HAL_SD_MspInit (&hsd1);
-}
-SD_HandleTypeDef * sdmmc_get_sd_handle ()
-{
-    return &hsd1;
-}
 
 /* USER CODE END 1 */
 

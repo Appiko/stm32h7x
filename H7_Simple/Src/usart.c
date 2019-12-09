@@ -21,7 +21,6 @@
 #include "usart.h"
 
 /* USER CODE BEGIN 0 */
-#include  "sys/unistd.h" // STDOUT_FILENO, STDERR_FILENO
 
 /* USER CODE END 0 */
 
@@ -35,7 +34,7 @@ void MX_USART3_UART_Init(void)
 {
 
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 1000000;
+  huart3.Init.BaudRate = 115200;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
@@ -108,7 +107,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     __HAL_LINKDMA(uartHandle,hdmatx,hdma_usart3_tx);
 
     /* USART3_RX Init */
-    hdma_usart3_rx.Instance = DMA1_Stream1;
+    hdma_usart3_rx.Instance = DMA1_Stream2;
     hdma_usart3_rx.Init.Request = DMA_REQUEST_USART3_RX;
     hdma_usart3_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
     hdma_usart3_rx.Init.PeriphInc = DMA_PINC_DISABLE;
@@ -158,12 +157,6 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 } 
 
 /* USER CODE BEGIN 1 */
-
-void uart_msp_init ()
-{
-	HAL_UART_MspInit (&huart3);
-}
-
 int _write(int file, char *data, int len)
 {
 	(void) file;

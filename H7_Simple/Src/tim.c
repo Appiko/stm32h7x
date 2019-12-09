@@ -62,7 +62,7 @@ void MX_TIM1_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 7;
+  sConfigOC.Pulse = 4;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -151,15 +151,6 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* tim_baseHandle)
 } 
 
 /* USER CODE BEGIN 1 */
-void tim_msp_init ()
-{
-    HAL_TIM_Base_MspInit(&htim1);
-}
-
-void tim_pwm1_start ()
-{
-    HAL_TIM_PWM_Start (&htim1, TIM_CHANNEL_1);
-}
 
 /* USER CODE END 1 */
 

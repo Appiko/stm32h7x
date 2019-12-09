@@ -1,0 +1,644 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; Copyright (c) 2019 STMicroelectronics.
+  * All rights reserved.</center></h2>
+  *
+  * This software component is licensed by ST under Ultimate Liberty license
+  * SLA0044, the "License"; You may not use this file except in compliance with
+  * the License. You may obtain a copy of the License at:
+  *                             www.st.com/SLA0044
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "dcmi.h"
+#include "dma.h"
+#include "fatfs.h"
+#include "i2c.h"
+#include "sdmmc.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include "camera.h"
+#include "stdio.h"
+#include "ov7725.h"
+#include "ov7725_regs.h"
+#include <stdbool.h>
+
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+typedef enum
+{
+    CAM_TRIG,
+    CAM_SAVE,
+    CAM_DONE,
+    CAM_INVALID,
+        
+}camera_state_t;
+
+typedef enum
+{
+    IMG_AVAIL,
+    IMG_FINISH,
+    IMG_IDLE,
+    IMG_INVALID,
+}img_state_t;
+
+
+#define FILE_OPER_MAX_TRY 3
+
+#define FLASH_TICKS 600
+
+#define SHOT_TICKS 1250
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+int cambus_scan()
+{
+    for (uint8_t addr=0x08; addr<=0x77; addr++) {
+//        HAL_Delay (10);
+        __disable_irq() ;
+        if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 1, 100) == HAL_OK) {
+            __enable_irq() ;
+            return (addr << 1) ;
+        }
+        __enable_irq() ;
+    }
+
+    return 0;
+}
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+
+/* USER CODE BEGIN PV */
+extern uint8_t _fb_base;
+
+FIL fp;
+
+uint8_t * p_fb_base = &_fb_base;
+
+static uint32_t g_expo_us;
+
+static uint32_t g_file_no_sd;
+
+static uint32_t g_file_no_tx;
+
+const uint8_t ppm_header[] = {'P','5','\n','3','2','0',' ','2','4','0','\n','2','5','5','\n'};
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_NVIC_Init(void);
+/* USER CODE BEGIN PFP */
+
+void cam_trig (void);
+
+void cam_save (void);
+
+void cam_done (void);
+
+
+void img_avail (void);
+
+void img_send (void);
+
+void img_finish (void);
+
+void img_idle (void);
+
+void (* arr_img_state[IMG_INVALID]) (void) = {img_avail, img_send, img_finish, img_idle};
+
+void  (* arr_cam_state[CAM_INVALID]) (void) = {cam_trig, cam_save, cam_done};
+
+volatile img_state_t img_state = IMG_IDLE;
+
+volatile camera_state_t cam_state = CAM_DONE;
+
+static uint8_t g_req_ack[5] = {};
+
+volatile bool g_cam_enable = true;
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+void print_idata ()
+{
+    for(uint32_t row = 100; row < 110; row++)
+    {
+        for(uint32_t col = 100; col < 110; col++)
+        {
+            printf("%d ",p_fb_base[row * col]);
+        }
+        printf("\n");
+    }
+}
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+  
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_I2C1_Init();
+  MX_USART3_UART_Init();
+  MX_TIM1_Init();
+  MX_DCMI_Init();
+  MX_SDMMC1_SD_Init();
+  MX_FATFS_Init();
+
+  /* Initialize interrupts */
+  MX_NVIC_Init();
+  /* USER CODE BEGIN 2 */
+  
+  
+  HAL_TIM_PWM_Start (&htim1, TIM_CHANNEL_1);
+  HAL_I2C_MspInit (&hi2c1);
+//  printf("Hello World\n");
+  
+//  printf ("FB Base : 0x%x Pointer : 0x%x\n", &_fb_base, p_fb_base);
+//  printf ("Size of PPM Header : %d\n", sizeof(ppm_header));
+  memset (p_fb_base, 0, 240*320);
+  
+  sd_init ();
+  get_file_no ();
+  print_idata ();
+
+  uint32_t cam = cambus_scan ();
+  printf ("Cam : 0x%x\n", cam);
+  printf("Version : 0x%x\n",CAMERA_IO_Read (0x42, VER));
+  
+  
+  
+  ov7725_drv.Init(cam, FRAMESIZE_QVGA);
+  HAL_Delay (10);  
+
+    HAL_DCMI_Start_DMA (&hdcmi, DCMI_MODE_SNAPSHOT, p_fb_base, 240*320);
+    HAL_Delay (2000);
+    print_idata ();
+ 
+//  printf("COM7 : 0x%x\n", CAMERA_IO_Read (cam, COM7));
+//  printf("COM7 : 0x%x\n", CAMERA_IO_Read (cam, COM7));  
+
+//  printf ("DCMI State 0x%x Error 0x%x\n",hdcmi.State, hdcmi.ErrorCode);
+//  printf ("DMA State 0x%x Error 0x%x\n",hdcmi.DMA_Handle->State, hdcmi.DMA_Handle->ErrorCode);
+//  print_idata ();
+//  memcpy (p_fb_base, ppm_header, sizeof(ppm_header));
+//  
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+      __WFI();
+      arr_cam_state[cam_state]();
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
+
+  /** Supply configuration update enable 
+  */
+  HAL_PWREx_ConfigSupply(PWR_LDO_SUPPLY);
+  /** Configure the main internal regulator output voltage 
+  */
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+  while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
+  /** Initializes the CPU, AHB and APB busses clocks 
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 3;
+  RCC_OscInitStruct.PLL.PLLN = 200;
+  RCC_OscInitStruct.PLL.PLLP = 2;
+  RCC_OscInitStruct.PLL.PLLQ = 80;
+  RCC_OscInitStruct.PLL.PLLR = 2;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
+  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
+  RCC_OscInitStruct.PLL.PLLFRACN = 0;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Initializes the CPU, AHB and APB busses clocks 
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
+                              |RCC_CLOCKTYPE_D3PCLK1|RCC_CLOCKTYPE_D1PCLK1;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV2;
+  RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV2;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART3|RCC_PERIPHCLK_SDMMC
+                              |RCC_PERIPHCLK_I2C1;
+  PeriphClkInitStruct.SdmmcClockSelection = RCC_SDMMCCLKSOURCE_PLL;
+  PeriphClkInitStruct.Usart234578ClockSelection = RCC_USART234578CLKSOURCE_D2PCLK1;
+  PeriphClkInitStruct.I2c123ClockSelection = RCC_I2C123CLKSOURCE_D2PCLK1;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief NVIC Configuration.
+  * @retval None
+  */
+static void MX_NVIC_Init(void)
+{
+  /* DMA1_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+  /* DCMI_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DCMI_IRQn, 0, 1);
+  HAL_NVIC_EnableIRQ(DCMI_IRQn);
+}
+
+/* USER CODE BEGIN 4 */
+
+
+void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin)
+{
+    printf("%s : 0x%x 0x%x\n", __func__, GPIO_Pin, CAM_TRIGGER_Pin);
+    if((GPIO_Pin & CAM_TRIGGER_Pin) && g_cam_enable)
+    {
+      cam_state = CAM_TRIG;
+    }
+}
+
+void HAL_UART_RxCpltCallback (UART_HandleTypeDef* huart)
+{
+    const uint8_t l_req[] = {'S','E','N','D','\n'};
+    const uint8_t l_ack[] = {'O','K','A','Y','\n'};
+    if(memcmp (g_req_ack, l_req, 5) == 0)
+    {
+        g_cam_enable = false;
+        printf("OKAY\n");
+        img_state = IMG_AVAIL;
+        
+        
+    }    
+}
+
+void cam_trig ()
+{
+    printf("%s\n", __func__);
+//  HAL_GPIO_WritePin (DCMI_PWRDN_GPIO_Port, DCMI_PWRDN_Pin, 0);
+
+  HAL_Delay (100);
+  for(uint32_t i = 0; i < 3; i++)
+  {
+    printf("Here\n");
+    HAL_DCMI_Start_DMA (&hdcmi, DCMI_MODE_SNAPSHOT, p_fb_base, 240*320);
+    HAL_Delay (2000);
+    print_idata ();
+//    HAL_DCMI_Stop (&hdcmi);
+    write_sd_card (g_file_no_sd);
+    memset (p_fb_base, 0, 240*320);
+  }
+  cam_state = CAM_DONE;
+  img_state = IMG_AVAIL;
+//  HAL_GPIO_WritePin (DCMI_PWRDN_GPIO_Port, DCMI_PWRDN_Pin, 1);
+  
+}
+
+void cam_save ()
+{
+}
+
+void cam_done ()
+{
+//  printf("%s\n", __func__);
+//  HAL_GPIO_WritePin (DCMI_PWRDN_GPIO_Port, DCMI_PWRDN_Pin, 1);
+}
+
+void img_avail (void)
+{
+    HAL_GPIO_WritePin (GSM_EN_GPIO_Port, GSM_EN_Pin, 1);
+    HAL_UART_Receive_IT (&huart3, g_req_ack, sizeof(g_req_ack));
+}
+
+
+void img_send (void)
+{
+    if(g_file_no_tx != g_file_no_sd)
+    {
+        read_sd_card (p_fb_base);
+        HAL_UART_Transmit (&huart3, p_fb_base, 320*240, 3000);
+        HAL_UART_Receive_IT (&huart3, g_req_ack, sizeof(g_req_ack));
+    }
+}
+
+void img_finish (void)
+{
+    g_cam_enable = true;
+    HAL_GPIO_WritePin (GSM_EN_GPIO_Port, GSM_EN_Pin, 0);
+}
+
+void sd_init (void)
+{
+    uint32_t status;
+  if(BSP_SD_IsDetected ())
+  {
+      printf("SD Card detected\n");
+      HAL_Delay (100);
+      status = SD_initialize (0);
+      if(status  == RES_OK)
+      {
+          printf("SD Card ready\n");
+          HAL_Delay (100);
+          status = f_mount (&SDFatFS, (const TCHAR*)SDPath, 1);
+          if(status == FR_OK)
+          {
+              printf("Mount successful\n");
+    
+          }
+          else {printf("Mount Failed : %d\n", status);}
+      }
+      else {printf("SD Card not ready : %d 0x%x\n", hsd1.State, status);}
+  }
+  else{printf("SD Card not present\n");}
+}
+
+void write_sd_card (uint32_t file_no)
+{
+//    while(hdcmi.State != HAL_DCMI_STATE_READY);
+    static attempts_remain = FILE_OPER_MAX_TRY;
+    uint32_t status = 0;
+    uint8_t file_name[] = {'f','o','o','_','x','x','x','x','.','r','g','b', '\0'};
+    
+    file_name[4] = (file_no/1000) + 0x30;
+    file_name[5] = ((file_no%1000)/100) + 0x30;
+    file_name[6] = ((file_no%100)/10) + 0x30;
+    file_name[7] = (file_no%10) + 0x30;
+    
+    printf("Attempt : %d\n", FILE_OPER_MAX_TRY - attempts_remain + 1);
+    printf ("upcoming file name : %x %x %x %x\n", file_name[4],file_name[5],file_name[6],file_name[7]);
+    if(attempts_remain > 0)
+    {
+        status = f_open (&fp, (char *)file_name, FA_CREATE_ALWAYS | FA_WRITE);
+//        status = f_open (&fp, "0020.rgb", FA_CREATE_ALWAYS | FA_WRITE);
+        if(status == FR_OK)
+        {
+            uint8_t byteswritten;
+            printf("File open\n");
+            status = f_write (&fp,(void *)p_fb_base, 320*240, &byteswritten);
+            if(status == FR_OK)
+            {
+                status = f_close (&fp);
+                if(status == FR_OK)
+                {
+                    printf("Safe to remove SD Card\n");
+                    attempts_remain = FILE_OPER_MAX_TRY;
+                    g_file_no_sd++;
+                    return status;
+                }
+                else
+                {
+                    printf("Failed while appending : %d\n", status);
+                    f_close (&fp);
+                    attempts_remain--;
+                    write_sd_card (file_no);
+                }
+            }
+            else
+            {
+                printf("File write failed : %d\n", status);
+                f_close (&fp);
+                attempts_remain--;
+                write_sd_card (file_no);
+            }
+        }
+        else
+        {
+            printf("File open failed : %d\n",status);
+            f_close (&fp); 
+            attempts_remain--;
+            write_sd_card (file_no);
+        }
+    }
+    else 
+    {
+        printf("All attempts failed\n");
+        g_file_no_sd--;
+        attempts_remain = FILE_OPER_MAX_TRY;
+    }
+
+}
+
+void read_sd_card(uint8_t * data_buff)
+{
+    static attempts_remain = FILE_OPER_MAX_TRY;
+    uint32_t status = 0;
+    uint8_t file_name[] = {'f','o','o','_','x','x','x','x','.','r','g','b', '\0'};
+    
+    file_name[4] = (g_file_no_tx/1000) + 0x30;
+    file_name[5] = ((g_file_no_tx%1000)/100) + 0x30;
+    file_name[6] = ((g_file_no_tx%100)/10) + 0x30;
+    file_name[7] = (g_file_no_tx%10) + 0x30;
+    
+    printf("Attempt : %d\n", FILE_OPER_MAX_TRY - attempts_remain + 1);
+    printf ("upcoming file name : %x %x %x %x\n", file_name[4],file_name[5],file_name[6],file_name[7]);
+    if(attempts_remain > 0)
+    {
+        status = f_open (&fp, (char *)file_name, FA_OPEN_EXISTING | FA_READ);
+//        status = f_open (&fp, "0020.rgb", FA_CREATE_ALWAYS | FA_WRITE);
+        if(status == FR_OK)
+        {
+            uint8_t bytesread;
+            printf("File open\n");
+            status = f_read (&fp,(void *)data_buff, 320*240, &bytesread);
+            if(status == FR_OK)
+            {
+                status = f_close (&fp);
+                if(status == FR_OK)
+                {
+                    printf("Safe to remove SD Card\n");
+                    attempts_remain = FILE_OPER_MAX_TRY;
+                    g_file_no_tx++;
+                    return status;
+                }
+                else
+                {
+                    printf("Failed while appending : %d\n", status);
+                    f_close (&fp);
+                    attempts_remain--;
+                    write_sd_card (g_file_no_tx);
+                }
+            }
+            else
+            {
+                printf("File write failed : %d\n", status);
+                f_close (&fp);
+                attempts_remain--;
+                write_sd_card (g_file_no_tx);
+            }
+        }
+        else
+        {
+            printf("File open failed : %d\n",status);
+            f_close (&fp); 
+            attempts_remain--;
+            write_sd_card (g_file_no_tx);
+        }
+    }
+    else 
+    {
+        printf("All attempts failed\n");
+        g_file_no_sd--;
+        attempts_remain = FILE_OPER_MAX_TRY;
+    }
+
+}
+
+uint32_t file_name_to_no (uint8_t * f_name)
+{
+    uint32_t file_no = 0;
+    file_no = ((f_name[4] > 0x29) && (f_name[4] < 0x3A)) ?
+        (((f_name[4] - 0x30) * 1000) + 
+        ((f_name[5] - 0x30) * 100) +
+        ((f_name[6] - 0x30) * 10) +
+        ((f_name[7] - 0x30) * 1)) :
+        g_file_no_sd;
+    return (file_no < g_file_no_sd) ? g_file_no_sd : file_no;
+}
+
+void get_file_no ()
+{
+    printf("%s\n", __func__);
+    uint32_t status;
+    uint32_t no_bytes;
+    uint8_t file_buff[4];
+    FILINFO file_info;
+    DIR dp;
+    status = f_opendir (&dp, "/");
+    if(status == FR_OK)
+    {
+        do
+        {
+            status = f_readdir (&dp, &file_info);
+            if(status == FR_OK)
+            {
+                
+                g_file_no_sd = file_name_to_no ((uint8_t *)file_info.fname); 
+                printf("%s\n",file_info.fname);
+                g_file_no_sd++;
+                g_file_no_tx++;
+
+                
+            }else{printf("Read dir failed : %d\n",status);}
+            
+        }while(file_info.fname[0] != '\0');
+        printf("File Number : %d\n", g_file_no_sd);
+        status = f_closedir (&dp);
+        if(status == FR_OK)
+        {
+            printf("DIR Close\n");
+        }else{printf("Close DIR failed : 0x%x\n", status);}
+    }else{printf("DIR open failed : 0x%x\n", status);}
+}
+
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+
+  /* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{ 
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+
